@@ -35,14 +35,21 @@ import java.util.Calendar;
 
 import org.apache.uima.UimaContext;
 import org.apache.uima.analysis_component.JCasAnnotator_ImplBase;
+import org.apache.uima.analysis_engine.AnalysisEngineDescription;
 import org.apache.uima.cas.FSIterator;
 import org.apache.uima.jcas.JCas;
 import org.apache.uima.resource.ResourceInitializationException;
 
-import de.unihd.dbs.uima.types.heideltime.Dct;
-import de.unihd.dbs.uima.types.heideltime.Sentence;
+import org.cleartk.timeml.type.DocumentCreationTime;
+import org.cleartk.timeml.type.Event;
+import org.cleartk.timeml.type.Time;
+import org.cleartk.token.type.Token;
+import org.cleartk.token.type.Sentence;
+import org.uimafit.factory.AnalysisEngineFactory;
+import org.uimafit.factory.TypeSystemDescriptionFactory;
+import org.uimafit.util.JCasUtil;
+
 import de.unihd.dbs.uima.types.heideltime.Timex3;
-import de.unihd.dbs.uima.types.heideltime.Token;
 
 
 /**
@@ -140,6 +147,12 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 	
 	// FOR DEBUGGING PURPOSES (IF FALSE)
 	Boolean deleteOverlapped = true;
+	
+	public static AnalysisEngineDescription getDescription() throws ResourceInitializationException {
+		// FIXME: No absolute paths!
+		return AnalysisEngineFactory.createPrimitiveDescription(HeidelTime.class,
+				TypeSystemDescriptionFactory.createTypeSystemDescriptionFromPath("/Users/joel/Dev/eclipse-workspace/HeidelTime/desc/type/HeidelTime_TypeSystem.xml"));
+	}
 
 
 	/**
@@ -156,12 +169,12 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		//////////////////////////////////
 		// GET CONFIGURATION PARAMETERS //
 		//////////////////////////////////
-		language       = (String)  aContext.getConfigParameterValue(PARAM_LANGUAGE);
-		typeToProcess  = (String)  aContext.getConfigParameterValue(PARAM_TYPE_TO_PROCESS);
-		find_dates     = (Boolean) aContext.getConfigParameterValue(PARAM_DATE);
-		find_times     = (Boolean) aContext.getConfigParameterValue(PARAM_TIME);
-		find_durations = (Boolean) aContext.getConfigParameterValue(PARAM_DURATION);
-		find_sets      = (Boolean) aContext.getConfigParameterValue(PARAM_SET);
+//		language       = (String)  aContext.getConfigParameterValue(PARAM_LANGUAGE);
+//		typeToProcess  = (String)  aContext.getConfigParameterValue(PARAM_TYPE_TO_PROCESS);
+//		find_dates     = (Boolean) aContext.getConfigParameterValue(PARAM_DATE);
+//		find_times     = (Boolean) aContext.getConfigParameterValue(PARAM_TIME);
+//		find_durations = (Boolean) aContext.getConfigParameterValue(PARAM_DURATION);
+//		find_sets      = (Boolean) aContext.getConfigParameterValue(PARAM_SET);
 
 		// GLOBAL NORMALIZATION INFORMATION
 		readGlobalNormalizationInformation();
@@ -620,6 +633,24 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		if (printDetails){
 			System.err.println("["+toolname+"] Number of Timexes added to CAS: "+timex_counter + "(global: "+timex_counter_global+")");
 		}
+		
+		saveClearTkFormat(jcas);
+	}
+	
+	private void saveClearTkFormat(JCas jcas) {
+		for (Timex3 heidelTime : JCasUtil.select(jcas, Timex3.class)) {
+			Time clearTime = new Time(jcas);
+			clearTime.setBegin(heidelTime.getBegin());
+			clearTime.setEnd(heidelTime.getEnd());
+			clearTime.setFreq(heidelTime.getTimexFreq());
+			clearTime.setMod(heidelTime.getTimexMod());
+			clearTime.setQuant(heidelTime.getTimexQuant());
+			clearTime.setTimeType(heidelTime.getTimexType());
+			clearTime.setValue(heidelTime.getTimexValue());
+			clearTime.setId(heidelTime.getTimexId());
+			// FunctionInDocument, TemporalFunction, BeginPoint, EndPoint unset!
+			clearTime.addToIndexes();
+		}
 	}
 
 	/**
@@ -640,23 +671,23 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		annotation.setBegin(begin);
 		annotation.setEnd(end);
 
-		annotation.setFilename(sentence.getFilename());
-		annotation.setSentId(sentence.getSentenceId());
+//		annotation.setFilename(sentence.getFilename());
+//		annotation.setSentId(sentence.getSentenceId());
 
 		FSIterator iterToken = jcas.getAnnotationIndex(Token.type).subiterator(
 				sentence);
-		String allTokIds = "";
-		while (iterToken.hasNext()) {
-			Token tok = (Token) iterToken.next();
-			if (tok.getBegin() == begin) {
-				annotation.setFirstTokId(tok.getTokenId());
-				allTokIds = "BEGIN<-->" + tok.getTokenId();
-			}
-			if ((tok.getBegin() > begin) && (tok.getEnd() <= end)) {
-				allTokIds = allTokIds + "<-->" + tok.getTokenId();
-			}
-		}
-		annotation.setAllTokIds(allTokIds);
+//		String allTokIds = "";
+//		while (iterToken.hasNext()) {
+//			Token tok = (Token) iterToken.next();
+//			if (tok.getBegin() == begin) {
+//				annotation.setFirstTokId(tok.getTokenId());
+//				allTokIds = "BEGIN<-->" + tok.getTokenId();
+//			}
+//			if ((tok.getBegin() > begin) && (tok.getEnd() <= end)) {
+//				allTokIds = allTokIds + "<-->" + tok.getTokenId();
+//			}
+//		}
+//		annotation.setAllTokIds(allTokIds);
 		annotation.setTimexType(timexType);
 		annotation.setTimexValue(timexValue);
 		annotation.setTimexId(timexId);
@@ -1019,10 +1050,10 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		//////////////////////////////////////////////
 		// INFORMATION ABOUT DOCUMENT CREATION TIME //
 		//////////////////////////////////////////////
-		FSIterator dctIter = jcas.getAnnotationIndex(Dct.type).iterator();
+		FSIterator dctIter = jcas.getAnnotationIndex(DocumentCreationTime.type).iterator();
 		if (dctIter.hasNext()) {
 			dctAvailable = true;
-			Dct dct = (Dct) dctIter.next();
+			DocumentCreationTime dct = (DocumentCreationTime) dctIter.next();
 			dctValue = dct.getValue();
 			// year, month, day as mentioned in the DCT
 			if (dctValue.matches("\\d\\d\\d\\d\\d\\d\\d\\d")){
@@ -3137,5 +3168,4 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		normMonthName.put("november","11");
 		normMonthName.put("december","12");
 	}
-	
 }
