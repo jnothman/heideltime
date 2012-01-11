@@ -30,6 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.Calendar;
 
+import org.apache.uima.UIMAFramework;
 import org.apache.uima.UimaContext;
 import org.apache.uima.analysis_component.JCasAnnotator_ImplBase;
 import org.apache.uima.analysis_engine.AnalysisEngineDescription;
@@ -128,7 +129,8 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 	 */
 	public void initialize(UimaContext aContext) throws ResourceInitializationException {
 		super.initialize(aContext);
-		logger = aContext.getLogger();
+		logger = UIMAFramework.getLogger(HeidelTime.class);
+		logger.setLevel(Level.FINEST);
 	
 		/////////////////////////////////
 		// DEBUGGING PARAMETER SETTING //
@@ -253,7 +255,6 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				TimexRuleMatcher rm = new TimexRuleMatcher(timexType, new InputStreamReader (
 						this.getClass().getClassLoader().getResourceAsStream(hmResourcesRules.get(resource))),
 						hmAllRePattern);
-				rm.setLogger(logger);
 				if ("DATE".equals(timexType)) {
 					rmDate = rm;
 				} else if ("TIME".equals(timexType)) {

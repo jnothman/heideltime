@@ -14,6 +14,7 @@ import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.uima.UIMAFramework;
 import org.apache.uima.cas.FSIterator;
 import org.apache.uima.jcas.JCas;
 import org.apache.uima.util.Level;
@@ -34,7 +35,7 @@ public class TimexRuleMatcher {
 	Map<String, String>  hmPosConstraint;
 	Logger logger;
 
-	Pattern paRuleFeatures = Pattern.compile(",([A-Z_])+=\"([^\"])\"");
+	Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
 	Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
 
 	public TimexRuleMatcher(String timexType, Map<Pattern,String> hmPattern,
@@ -49,16 +50,14 @@ public class TimexRuleMatcher {
 		this.hmFreq = hmFreq;
 		this.hmMod = hmMod;
 		this.hmPosConstraint = hmPosConstraint;
+		logger = UIMAFramework.getLogger(TimexRuleMatcher.class);
 	}
 
 	private TimexRuleMatcher(String timexType) {
-		hmPattern = new HashMap<Pattern, String>();
-		hmNormalization = new HashMap<String, String>();
-		hmOffset = new HashMap<String, String>();
-		hmQuant = new HashMap<String, String>();
-		hmFreq = new HashMap<String, String>();
-		hmMod = new HashMap<String, String>();
-		hmPosConstraint = new HashMap<String, String>();
+		this(timexType, new HashMap<Pattern, String>(), 
+				new HashMap<String, String>(), new HashMap<String, String>(),
+				new HashMap<String, String>(), new HashMap<String, String>(),
+                new HashMap<String, String>(), new HashMap<String, String>());
 	}
 
 	public TimexRuleMatcher(String timexType, InputStreamReader istream, Map<String, String> hmAllRePattern)
@@ -69,10 +68,10 @@ public class TimexRuleMatcher {
 			if (line.startsWith("//") || line.equals("")) {
 				continue;
 			}
-			log(Level.FINE, "DEBUGGING: reading rules..."+ line);
+			logger.log(Level.FINE, "DEBUGGING: reading rules..."+ line);
 			// check each line for the name, extraction, and normalization part
 			if (!readRule(line, hmAllRePattern)) {
-				log(Level.WARNING, "Cannot read the following line of " + timexType + "rules \nLine: "+line);
+				logger.log(Level.WARNING, "Cannot read the following line of " + timexType + "rules \nLine: "+line);
 			}
 		}
 	}
@@ -85,6 +84,7 @@ public class TimexRuleMatcher {
 		String rule_name          = r.group(1);
 		String rule_extraction    = r.group(2);
 		String rule_normalization = r.group(3);
+		String debugSummary = rule_name + ": ";
 	
 		////////////////////////////////////////////////////////////////////
 		// RULE EXTRACTION PARTS ARE TRANSLATED INTO REGULAR EXPRESSSIONS //
@@ -92,9 +92,9 @@ public class TimexRuleMatcher {
 		// create pattern for rule extraction part
 		Pattern paVariable = Pattern.compile("%(re[a-zA-Z0-9]*)");
 		for (MatchResult mr : findMatches(paVariable, rule_extraction)){
-			log(Level.FINE, "DEBUGGING: replacing patterns..."+ mr.group());
+			logger.log(Level.FINE, "DEBUGGING: replacing patterns..."+ mr.group());
 			if (!(hmAllRePattern.containsKey(mr.group(1)))){
-				log(Level.SEVERE, "Error creating rule:"+rule_name + "\nThe following pattern used in this rule does not exist, does it? %"+mr.group(1));
+				logger.log(Level.SEVERE, "Error creating rule:"+rule_name + "\nThe following pattern used in this rule does not exist, does it? %"+mr.group(1));
 				System.exit(-1);
 			}
 			rule_extraction = rule_extraction.replaceAll("%"+mr.group(1), hmAllRePattern.get(mr.group(1)));
@@ -105,12 +105,14 @@ public class TimexRuleMatcher {
 			pattern = Pattern.compile(rule_extraction);
 		}
 		catch (java.util.regex.PatternSyntaxException e){
-			log(Level.SEVERE, "Compiling rules resulted in errors." +
+			logger.log(Level.SEVERE, "Compiling rules resulted in errors." +
 					"\nProblematic rule is "+rule_name +
 					"\nCannot compile pattern: "+rule_extraction);
 			e.printStackTrace();
 			System.exit(-1);
 		}
+		
+		debugSummary += rule_extraction + "\nNorm: " + rule_normalization;
 	
 		// get extraction part
 		hmPattern.put(pattern, rule_name);
@@ -121,7 +123,7 @@ public class TimexRuleMatcher {
 		// CHECK FOR ADDITIONAL CONSTRAINS //
 		/////////////////////////////////////
 		if (!(r.group(4) == null)){
-			for (MatchResult ro : findMatches(paRuleFeatures, line)){
+			for (MatchResult ro : findMatches(paRuleFeature, r.group(4))){
 				String key = ro.group(1);
 				Map<String, String> hm;
 				if ("OFFSET".equals(key)) {
@@ -135,23 +137,15 @@ public class TimexRuleMatcher {
 				} else if ("POS_CONSTRAINT".equals(key)) {
 					hm = hmPosConstraint;
 				} else {
-					log(Level.WARNING, "Unknown rule feature: " + key);
+					logger.log(Level.WARNING, "Unknown rule feature: " + key + " with value: \"" + ro.group(2) + "\" in features: " + r.group(4));
 					continue;
 				}
 				hm.put(rule_name, ro.group(2));
+				debugSummary += "\n" + key + ": " + rule_normalization;
 			}
 		}
+		logger.log(Level.FINER, debugSummary);
 		return true;
-	}
-
-	private void log(Level level, String s) {
-	    if (logger != null) {
-	    	logger.log(level, s);
-	    }
-	}
-
-	public void setLogger(Logger logger) {
-		this.logger = logger;
 	}
 
 	/**
@@ -205,12 +199,12 @@ public class TimexRuleMatcher {
 					if (hmNormalization.containsKey(ruleName)){
 						String[] attributes = new String[4];
 						attributes = getAttributesForTimexFromFile(ruleName, r, jcas, hmAllNormalization);
-						addTimexAnnotation(timexType, timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
+						addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
 								attributes[0], attributes[1], attributes[2], attributes[3], idGen.next(), ruleName, jcas);
 						nAdded++;
 					}
 					else{
-						log(Level.WARNING, "SOMETHING REALLY WRONG HERE: "+hmPattern.get(p));
+						logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE: "+hmPattern.get(p));
 					}
 				}
 			}
@@ -275,7 +269,7 @@ public class TimexRuleMatcher {
 			String pos = mr.group(2);
 			String pos_as_is = getPosFromMatchResult(tokenBegin, tokenEnd ,s, jcas);
 			if (pos.equals(pos_as_is)){
-				log(Level.FINE, "POS CONSTRAINT IS VALID: pos should be "+pos+" and is "+pos_as_is);
+				logger.log(Level.FINE, "POS CONSTRAINT IS VALID: pos should be "+pos+" and is "+pos_as_is);
 			}
 			else {
 				constraint_ok = false;
@@ -400,7 +394,7 @@ public class TimexRuleMatcher {
 		while ((tonormalize.contains("%")) || (tonormalize.contains("group"))){
 			// replace normalization functions
 			for (MatchResult mr : findMatches(paNorm, tonormalize)){
-				log(Level.FINE, "-----------------------------------" + "\n" +
+				logger.log(Level.FINE, "-----------------------------------" + "\n" +
 						"DEBUGGING: tonormalize:"+tonormalize + "\n" +
 						"DEBUGGING: mr.group():"+mr.group() + "\n" +
 						"DEBUGGING: mr.group(1):"+mr.group(1) + "\n" +
@@ -412,25 +406,24 @@ public class TimexRuleMatcher {
 				if (! (m.group(Integer.parseInt(mr.group(2))) == null)){
 					String partToReplace = m.group(Integer.parseInt(mr.group(2))).replaceAll("[\n\\s]+", " ");
 					if (!(hmAllNormalization.get(mr.group(1)).containsKey(partToReplace))){
-						log(Level.WARNING, "Maybe problem with normalization of the resource: "+mr.group(1) + "\n" +
+						logger.log(Level.WARNING, "Maybe problem with normalization of the resource: "+mr.group(1) + "\n" +
 								"Maybe problem with part to replace? "+partToReplace);
 					}
 					tonormalize = tonormalize.replace(mr.group(), hmAllNormalization.get(mr.group(1)).get(partToReplace));
 				}
 				else{
-					log(Level.FINE, "Empty part to normalize in "+mr.group(1));
+					logger.log(Level.FINE, "Empty part to normalize in "+mr.group(1));
 					tonormalize = tonormalize.replace(mr.group(), "");
 				}
 			}
 			// replace other groups
 			for (MatchResult mr : findMatches(paGroup,tonormalize)){
-				log(Level.FINE, "-----------------------------------" + "\n" +
+				logger.log(Level.FINE, "-----------------------------------" + "\n" +
 						"DEBUGGING: tonormalize:"+tonormalize + "\n" +
 						"DEBUGGING: mr.group():"+mr.group() + "\n" +
 						"DEBUGGING: mr.group(1):"+mr.group(1) + "\n" +
-						"DEBUGGING: mr.group(2):"+mr.group(2) + "\n" +
 						"DEBUGGING: m.group():"+m.group() + "\n" +
-						"DEBUGGING: m.group("+Integer.parseInt(mr.group(2))+"):"+m.group(Integer.parseInt(mr.group(2))) + "\n" +
+						"DEBUGGING: m.group("+Integer.parseInt(mr.group(1))+"):"+m.group(Integer.parseInt(mr.group(1))) + "\n" +
 						"-----------------------------------");
 				tonormalize = tonormalize.replace(mr.group(), m.group(Integer.parseInt(mr.group(1))));
 			}
@@ -480,7 +473,7 @@ public class TimexRuleMatcher {
 	 * @param foundByRule
 	 * @param jcas
 	 */
-	public void addTimexAnnotation(String timexType, int begin, int end, Sentence sentence, String timexValue, String timexQuant,
+	public void addTimexAnnotation(int begin, int end, Sentence sentence, String timexValue, String timexQuant,
 			String timexFreq, String timexMod, String timexId, String foundByRule, JCas jcas) {
 	
 		Timex3 annotation = new Timex3(jcas);
@@ -525,7 +518,6 @@ public class TimexRuleMatcher {
 			annotation.setTimexMod(timexMod);
 		}
 		annotation.addToIndexes();
-		log(Level.FINE, annotation.getTimexId()+"EXTRACTION PHASE:   "+" found by:"+annotation.getFoundByRule()+" text:"+annotation.getCoveredText());
-		log(Level.FINE, annotation.getTimexId()+"NORMALIZATION PHASE:"+" found by:"+annotation.getFoundByRule()+" text:"+annotation.getCoveredText()+" value:"+annotation.getTimexValue());
+		logger.log(Level.FINE, annotation.getTimexId()+"NORMALIZATION PHASE:"+" found by:"+annotation.getFoundByRule()+" text: \""+annotation.getCoveredText()+"\" value:"+annotation.getTimexValue());
 	}
 }
