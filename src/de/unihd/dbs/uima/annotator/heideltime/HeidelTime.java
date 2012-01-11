@@ -1,13 +1,13 @@
 /*
  * HeidelTime.java
- * 
- * Copyright (c) 2011, Database Research Group, Institute of Computer Science, Heidelberg University. 
- * All rights reserved. This program and the accompanying materials 
+ *
+ * Copyright (c) 2011, Database Research Group, Institute of Computer Science, Heidelberg University.
+ * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the GNU General Public License.
- * 
+ *
  * author: Jannik Strötgen
  * email:  stroetgen@uni-hd.de
- * 
+ *
  * HeidelTime is a multilingual, cross-domain temporal tagger.
  * For details, see http://dbs.ifi.uni-heidelberg.de/heideltime
  */
@@ -21,11 +21,8 @@ import java.io.InputStreamReader;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.regex.MatchResult;
@@ -39,6 +36,8 @@ import org.apache.uima.analysis_engine.AnalysisEngineDescription;
 import org.apache.uima.cas.FSIterator;
 import org.apache.uima.jcas.JCas;
 import org.apache.uima.resource.ResourceInitializationException;
+import org.apache.uima.util.Level;
+import org.apache.uima.util.Logger;
 
 import org.cleartk.timeml.type.DocumentCreationTime;
 import org.cleartk.timeml.type.Event;
@@ -48,93 +47,61 @@ import org.cleartk.token.type.Sentence;
 import org.uimafit.factory.AnalysisEngineFactory;
 import org.uimafit.factory.TypeSystemDescriptionFactory;
 import org.uimafit.util.JCasUtil;
-
+import de.unihd.dbs.uima.annotator.heideltime.IdGenerator;
+import de.unihd.dbs.uima.annotator.heideltime.TimexRuleMatcher;
 import de.unihd.dbs.uima.types.heideltime.Timex3;
 
 
 /**
- * HeidelTime finds temporal expressions and normalizes them according to the TIMEX3 
+ * HeidelTime finds temporal expressions and normalizes them according to the TIMEX3
  * TimeML annotation standard.
- * 
+ *
  * @author Jannik
- * 
+ *
  */
 public class HeidelTime extends JCasAnnotator_ImplBase {
 
 	// TOOL NAME (may be used as componentId)
 	private String toolname = "de.unihd.dbs.uima.annoator.heideltime";
-	private Boolean printDetails = false;
 
 	// COUNTER (how many timexes added to CAS? (finally)
 	int timex_counter        = 0;
 	int timex_counter_global = 0;
-	
+
 	// COUNTER FOR TIMEX IDS
-	int timexID = 0;
-	
+	class TimexIdGenerator implements IdGenerator {
+		int counter = 0;
+		public String next() {
+			return "t" + counter++;
+		}
+	}
+	IdGenerator idGenerator = new TimexIdGenerator();
+
 	// PATTERNS TO READ RESOURCES "RULES" AND "NORMALIZATION"
 	Pattern paReadNormalizations = Pattern.compile("\"(.*?)\",\"(.*?)\"");
-	Pattern paReadRules          = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
 
 	// STORE PATTERNS AND NORMALIZATIONS
 	HashMap<String, HashMap<String,String>> hmAllNormalization = new HashMap<String, HashMap<String,String>>();
 	TreeMap<String, String> hmAllRePattern                     = new TreeMap<String, String>();
-	
+
 	// GLOBAL ACCESS TO SOME NORMALIZATION MAPPINGS (set internally)
 	HashMap<String, String> normDayInWeek        = new HashMap<String, String>();
 	HashMap<String, String> normNumber           = new HashMap<String, String>();
 	HashMap<String, String> normMonthName        = new HashMap<String, String>();
-	HashMap<String, String> normMonthInSeason    = new HashMap<String, String>(); 
+	HashMap<String, String> normMonthInSeason    = new HashMap<String, String>();
 	HashMap<String, String> normMonthInQuarter   = new HashMap<String, String>();
-	
-	// GLOBAL ACCESS TO ALL EXTRACTION PARTS OF RULES (patterns loaded from files)
-	HashMap<Pattern, String> hmDatePattern     = new HashMap<Pattern, String>();
-	HashMap<Pattern, String> hmDurationPattern = new HashMap<Pattern, String>();
-	HashMap<Pattern, String> hmTimePattern     = new HashMap<Pattern, String>();
-	HashMap<Pattern, String> hmSetPattern      = new HashMap<Pattern, String>();
 
-	// GLOBAL ACCESS TO ALL NORMALIZATION PARTS OF RULES (patterns loaded from files)
-	HashMap<String, String> hmDateNormalization     = new HashMap<String, String>();
-	HashMap<String, String> hmTimeNormalization     = new HashMap<String, String>();
-	HashMap<String, String> hmDurationNormalization = new HashMap<String, String>();
-	HashMap<String, String> hmSetNormalization      = new HashMap<String, String>();
-	
-	// GLOBAL ACCESS TO ALL OFFSET PARTS OF RULES (patterns loaded from files)
-	HashMap<String, String> hmDateOffset     = new HashMap<String, String>();
-	HashMap<String, String> hmTimeOffset     = new HashMap<String, String>();
-	HashMap<String, String> hmDurationOffset = new HashMap<String, String>();
-	HashMap<String, String> hmSetOffset      = new HashMap<String, String>();
-	
-	// GLOBAL ACCESS TO ALL QUANT PARTS OF RULES (patterns loaded from files)
-	HashMap<String, String> hmDateQuant     = new HashMap<String, String>();
-	HashMap<String, String> hmTimeQuant     = new HashMap<String, String>();
-	HashMap<String, String> hmDurationQuant = new HashMap<String, String>();
-	HashMap<String, String> hmSetQuant      = new HashMap<String, String>();
+	TimexRuleMatcher rmDate;
+	TimexRuleMatcher rmTime;
+	TimexRuleMatcher rmDuration;
+	TimexRuleMatcher rmSet;
 
-	// GLOBAL ACCESS TO ALL FREQ PARTS OF RULES (patterns loaded from files)
-	HashMap<String, String> hmDateFreq     = new HashMap<String, String>();
-	HashMap<String, String> hmTimeFreq     = new HashMap<String, String>();
-	HashMap<String, String> hmDurationFreq = new HashMap<String, String>();
-	HashMap<String, String> hmSetFreq      = new HashMap<String, String>();
-
-	// GLOBAL ACCESS TO ALL MOD PARTS OF RULES (patterns loaded from files)
-	HashMap<String, String> hmDateMod     = new HashMap<String, String>();
-	HashMap<String, String> hmTimeMod     = new HashMap<String, String>();
-	HashMap<String, String> hmDurationMod = new HashMap<String, String>();
-	HashMap<String, String> hmSetMod      = new HashMap<String, String>();
-
-	// GLOBAL ACCESS TO ALL POS PARTS OF RULES (patterns loaded from files)
-	HashMap<String, String> hmDatePosConstraint     = new HashMap<String, String>();
-	HashMap<String, String> hmTimePosConstraint     = new HashMap<String, String>();
-	HashMap<String, String> hmDurationPosConstraint = new HashMap<String, String>();
-	HashMap<String, String> hmSetPosConstraint      = new HashMap<String, String>();
-	
 	// INPUT PARAMETER HANDLING WITH UIMA
 	String PARAM_LANGUAGE         = "Language_english_german";
 	String PARAM_TYPE_TO_PROCESS  = "Type_news_narratives";
 	String language       = "english";
 	String typeToProcess  = "news";
-	
+
 	// INPUT PARAMETER HANDLING WITH UIMA (which types shall be extracted)
 	String PARAM_DATE      = "Date";
 	String PARAM_TIME      = "Time";
@@ -144,7 +111,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 	Boolean find_times     = true;
 	Boolean find_durations = true;
 	Boolean find_sets      = true;
-	
+
 	// FOR DEBUGGING PURPOSES (IF FALSE)
 	Boolean deleteOverlapped = true;
 	
@@ -154,18 +121,20 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				TypeSystemDescriptionFactory.createTypeSystemDescriptionFromPath("/Users/joel/Dev/eclipse-workspace/HeidelTime/desc/type/HeidelTime_TypeSystem.xml"));
 	}
 
+	Logger logger;
 
 	/**
 	 * @see AnalysisComponent#initialize(UimaContext)
 	 */
 	public void initialize(UimaContext aContext) throws ResourceInitializationException {
 		super.initialize(aContext);
-
+		logger = aContext.getLogger();
+	
 		/////////////////////////////////
 		// DEBUGGING PARAMETER SETTING //
 		/////////////////////////////////
 		deleteOverlapped = true;
-		
+	
 		//////////////////////////////////
 		// GET CONFIGURATION PARAMETERS //
 		//////////////////////////////////
@@ -178,7 +147,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 
 		// GLOBAL NORMALIZATION INFORMATION
 		readGlobalNormalizationInformation();
-		
+	
 		////////////////////////////////////////////////////////////
 		// READ NORMALIZATION RESOURCES FROM FILES AND STORE THEM //
 		////////////////////////////////////////////////////////////
@@ -187,7 +156,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			hmAllNormalization.put(which, new HashMap<String, String>());
 		}
 		readNormalizationResources(hmResourcesNormalization);
-		
+	
 		//////////////////////////////////////////////////////
 		// READ PATTERN RESOURCES FROM FILES AND STORE THEM //
 		//////////////////////////////////////////////////////
@@ -196,27 +165,27 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			hmAllRePattern.put(which, "");
 		}
 		readRePatternResources(hmResourcesRePattern);
-	
+
 		///////////////////////////////////////////////////
 		// READ RULE RESOURCES FROM FILES AND STORE THEM //
 		///////////////////////////////////////////////////
 		HashMap<String, String> hmResourcesRules = readResourcesFromDirectory("rules");
 		readRules(hmResourcesRules);
-		
+	
 		/////////////////////////////
 		// PRINT WHAT WILL BE DONE //
 		/////////////////////////////
 		if (find_dates){
-			System.err.println("Getting Dates...");	
+			logger.log(Level.INFO, "Getting Dates...");
 		}
 		if (find_times){
-			System.err.println("Getting Times...");	
+			logger.log(Level.INFO, "Getting Times...");
 		}
 		if (find_durations){
-			System.err.println("Getting Durations...");	
+			logger.log(Level.INFO, "Getting Durations...");
 		}
 		if (find_sets){
-			System.err.println("Getting Sets...");
+			logger.log(Level.INFO, "Getting Sets...");
 		}
 	}
 
@@ -229,7 +198,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 	public HashMap<String, String> readResourcesFromDirectory(String resourceType){
 
 		HashMap<String, String> hmResources = new HashMap<String, String>();
-		
+	
 		BufferedReader br = new BufferedReader(new InputStreamReader (this.getClass().getClassLoader().getResourceAsStream("used_resources.txt")));
 		try {
 			for ( String line; (line=br.readLine()) != null; ){
@@ -249,234 +218,52 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 	}
 
 	/**
+	 * Find all the matches of a pattern in a charSequence and return the
+	 * results as list.
+	 *
+	 * @param pattern
+	 * @param s
+	 * @return
+	 */
+	public static Iterable<MatchResult> findMatches(Pattern pattern,
+			CharSequence s) {
+		List<MatchResult> results = new ArrayList<MatchResult>();
+
+		for (Matcher m = pattern.matcher(s); m.find();)
+			results.add(m.toMatchResult());
+
+		return results;
+	}
+
+
+	/**
 	 * READ THE RULES FROM THE FILES. The files have to be defined in the HashMap hmResourcesRules.
 	 * @param hmResourcesRules
 	 */
 	public void readRules(HashMap<String, String> hmResourcesRules){
 		try {
 			for (String resource : hmResourcesRules.keySet()) {
-				BufferedReader br = new BufferedReader(new InputStreamReader (this.getClass().getClassLoader().getResourceAsStream(hmResourcesRules.get(resource))));
-				System.err.println("["+toolname+"] Adding rule resource: "+resource);
-				for ( String line; (line=br.readLine()) != null; ){
-					
-					if (!(line.startsWith("//"))){
-						boolean correctLine = false;
-						if (!(line.equals(""))){
-							if (printDetails == true){
-								System.err.println("DEBUGGING: reading rules..."+ line);
-							}
-							// check each line for the name, extraction, and normalization part
-							for (MatchResult r : findMatches(paReadRules, line)){
-								correctLine = true;
-								String rule_name          = r.group(1);
-								String rule_extraction    = r.group(2);
-								String rule_normalization = r.group(3);
-								String rule_offset        = "";
-								String rule_quant         = "";
-								String rule_freq          = "";
-								String rule_mod           = "";
-								String pos_constraint     = "";
-								
-								////////////////////////////////////////////////////////////////////
-								// RULE EXTRACTION PARTS ARE TRANSLATED INTO REGULAR EXPRESSSIONS //
-								////////////////////////////////////////////////////////////////////
-								// create pattern for rule extraction part
-								Pattern paVariable = Pattern.compile("%(re[a-zA-Z0-9]*)");
-								for (MatchResult mr : findMatches(paVariable,rule_extraction)){
-									if (printDetails == true){
-										System.err.println("DEBUGGING: replacing patterns..."+ mr.group());
-									}
-									if (!(hmAllRePattern.containsKey(mr.group(1)))){
-										System.err.println("Error creating rule:"+rule_name);
-										System.err.println("The following pattern used in this rule does not exist, does it? %"+mr.group(1));
-										System.exit(-1);
-									}
-									rule_extraction = rule_extraction.replaceAll("%"+mr.group(1), hmAllRePattern.get(mr.group(1)));
-								}
-								rule_extraction = rule_extraction.replaceAll(" ", "[\\\\s]+");
-								Pattern pattern = null;
-								try{
-									pattern = Pattern.compile(rule_extraction);
-								}
-								catch (java.util.regex.PatternSyntaxException e){
-										System.err.println("Compiling rules resulted in errors.");
-										System.err.println("Problematic rule is "+rule_name);
-										System.err.println("Cannot compile pattern: "+rule_extraction);
-										e.printStackTrace();
-										System.exit(-1);
-									}
-//								Pattern pattern = Pattern.compile(rule_extraction);
-																
-								/////////////////////////////////////
-								// CHECK FOR ADDITIONAL CONSTRAINS //
-								/////////////////////////////////////
-								if (!(r.group(4) == null)){
-									if (r.group(4).contains("OFFSET")){
-										Pattern paOffset = Pattern.compile("OFFSET=\"(.*?)\"");
-										for (MatchResult ro : findMatches(paOffset, line)){
-											rule_offset = ro.group(1);
-										}
-									}
-									if (r.group(4).contains("NORM_QUANT")){
-										Pattern paQuant = Pattern.compile("NORM_QUANT=\"(.*?)\"");
-										for (MatchResult rq : findMatches(paQuant, line)){
-											rule_quant = rq.group(1);
-										}
-									}
-									if (r.group(4).contains("NORM_FREQ")){
-										Pattern paFreq = Pattern.compile("NORM_FREQ=\"(.*?)\"");
-										for (MatchResult rf : findMatches(paFreq, line)){
-											rule_freq = rf.group(1);
-										}
-									}
-									if (r.group(4).contains("NORM_MOD")){
-										Pattern paMod = Pattern.compile("NORM_MOD=\"(.*?)\"");
-										for (MatchResult rf : findMatches(paMod, line)){
-											rule_mod = rf.group(1);
-										}
-									}
-									if (r.group(4).contains("POS_CONSTRAINT")){
-										Pattern paPos = Pattern.compile("POS_CONSTRAINT=\"(.*?)\"");
-										for (MatchResult rp : findMatches(paPos, line)){
-											pos_constraint = rp.group(1);
-										}
-									}
-								}
-
-								/////////////////////////////////////////////
-								// READ DATE RULES AND MAKE THEM AVAILABLE //
-								/////////////////////////////////////////////
-								if (resource.equals("daterules")){
-									// get extraction part
-									hmDatePattern.put(pattern, rule_name);
-									// get normalization part
-									hmDateNormalization.put(rule_name, rule_normalization);
-									// get offset part
-									if (!(rule_offset.equals(""))){
-										hmDateOffset.put(rule_name, rule_offset);										
-									}
-									// get quant part
-									if (!(rule_quant.equals(""))){
-										hmDateQuant.put(rule_name, rule_quant);
-									}
-									// get freq part
-									if (!(rule_freq.equals(""))){
-										hmDateFreq.put(rule_name, rule_freq);
-									}
-									// get mod part
-									if (!(rule_mod.equals(""))){
-										hmDateMod.put(rule_name, rule_mod);
-									}
-									// get pos constraint part
-									if (!(pos_constraint.equals(""))){
-										hmDatePosConstraint.put(rule_name, pos_constraint);
-									}
-								}
-								
-								/////////////////////////////////////////////////
-								// READ DURATION RULES AND MAKE THEM AVAILABLE //
-								/////////////////////////////////////////////////
-								else if (resource.equals("durationrules")){
-									// get extraction part
-									hmDurationPattern.put(pattern, rule_name);
-									// get normalization part
-									hmDurationNormalization.put(rule_name, rule_normalization);
-									// get offset part									
-									if (!(rule_offset.equals(""))){
-										hmDurationOffset.put(rule_name, rule_offset);										
-									}
-									// get quant part
-									if (!(rule_quant.equals(""))){
-										hmDurationQuant.put(rule_name, rule_quant);
-									}
-									// get freq part
-									if (!(rule_freq.equals(""))){
-										hmDurationFreq.put(rule_name, rule_freq);
-									}
-									// get mod part
-									if (!(rule_mod.equals(""))){
-										hmDurationMod.put(rule_name, rule_mod);
-									}
-									// get pos constraint part
-									if (!(pos_constraint.equals(""))){
-										hmDurationPosConstraint.put(rule_name, pos_constraint);
-									}
-								}
-								
-								////////////////////////////////////////////
-								// READ SET RULES AND MAKE THEM AVAILABLE //
-								////////////////////////////////////////////
-								else if (resource.equals("setrules")){
-									// get extraction part
-									hmSetPattern.put(pattern, rule_name);
-									// get normalization part
-									hmSetNormalization.put(rule_name, rule_normalization);
-									// get offset part									
-									if (!(rule_offset.equals(""))){
-										hmSetOffset.put(rule_name, rule_offset);										
-									}
-									// get quant part
-									if (!(rule_quant.equals(""))){
-										hmSetQuant.put(rule_name, rule_quant);
-									}
-									// get freq part
-									if (!(rule_freq.equals(""))){
-										hmSetFreq.put(rule_name, rule_freq);
-									}
-									// get mod part
-									if (!(rule_mod.equals(""))){
-										hmSetMod.put(rule_name, rule_mod);
-									}
-									// get pos constraint part
-									if (!(pos_constraint.equals(""))){
-										hmSetPosConstraint.put(rule_name, pos_constraint);
-									}
-								}
-								
-								/////////////////////////////////////////////
-								// READ TIME RULES AND MAKE THEM AVAILABLE //
-								/////////////////////////////////////////////
-								else if (resource.equals("timerules")){
-									// get extraction part
-									hmTimePattern.put(pattern, rule_name);
-									// get normalization part
-									hmTimeNormalization.put(rule_name, rule_normalization);
-									// get offset part									
-									if (!(rule_offset.equals(""))){
-										hmTimeOffset.put(rule_name, rule_offset);										
-									}
-									// get quant part
-									if (!(rule_quant.equals(""))){
-										hmTimeQuant.put(rule_name, rule_quant);
-									}
-									// get freq part
-									if (!(rule_freq.equals(""))){
-										hmTimeFreq.put(rule_name, rule_freq);
-									}
-									// get mod part
-									if (!(rule_mod.equals(""))){
-										hmTimeMod.put(rule_name, rule_mod);
-									}
-									// get pos constraint part
-									if (!(pos_constraint.equals(""))){
-										hmTimePosConstraint.put(rule_name, pos_constraint);
-									}
-								}
-								else{
-									System.err.println("["+toolname+"] something wrong when reading rule resource: "+resource);
-								}
-							}
-						}
-						
-						///////////////////////////////////////////
-						// CHECK FOR PROBLEMS WHEN READING RULES //
-						///////////////////////////////////////////
-						if ((correctLine == false) && (!(line.matches("")))){
-							System.err.println("["+toolname+"] Cannot read the following line of rule resource "+resource);
-							System.err.println("["+toolname+"] Line: "+line);
-						}
-					}
+				if (!resource.endsWith("rules")) {
+					logger.log(Level.WARNING, "Not adding resource unless it ends 'rules': " + resource);
+					continue;
 				}
+				logger.log(Level.INFO, "Adding rule resource: "+resource);
+				// timexType is prefix before "rules"
+				String timexType = resource.substring(0, resource.length() - 5).toUpperCase();
+				TimexRuleMatcher rm = new TimexRuleMatcher(timexType, new InputStreamReader (
+						this.getClass().getClassLoader().getResourceAsStream(hmResourcesRules.get(resource))),
+						hmAllRePattern);
+				rm.setLogger(logger);
+				if ("DATE".equals(timexType)) {
+					rmDate = rm;
+				} else if ("TIME".equals(timexType)) {
+					rmTime = rm;
+				} else if ("DURATION".equals(timexType)) {
+					rmDuration = rm;
+				} else if ("SET".equals(timexType)) {
+					rmSet = rm;
+				}
+			
 			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
@@ -484,21 +271,21 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			e.printStackTrace();
 		}
 	}
-	
+
 	/**
 	 * READ THE REPATTERN FROM THE FILES. The files have to be defined in the HashMap hmResourcesRePattern.
 	 * @param hmResourcesRePattern
 	 */
 	public void readRePatternResources(HashMap<String, String> hmResourcesRePattern){
-		
+	
 		//////////////////////////////////////
 		// READ REGULAR EXPRESSION PATTERNS //
 		//////////////////////////////////////
 		try {
 			for (String resource : hmResourcesRePattern.keySet()) {
-				System.err.println("["+toolname+"] Adding pattern resource: "+resource);
+				logger.log(Level.INFO, "Adding pattern resource: "+resource);
 				// create a buffered reader for every repattern resource file
-				BufferedReader in = new BufferedReader(new InputStreamReader 
+				BufferedReader in = new BufferedReader(new InputStreamReader
 						(this.getClass().getClassLoader().getResourceAsStream(hmResourcesRePattern.get(resource)),"UTF-8"));
 				for ( String line; (line=in.readLine()) != null; ){
 					if (!(line.startsWith("//"))){
@@ -514,8 +301,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 							}
 						}
 						if ((correctLine == false) && (!(line.matches("")))){
-							System.err.println("["+toolname+"] Cannot read one of the lines of pattern resource "+resource);
-							System.err.println("["+toolname+"] Line: "+line);
+							logger.log(Level.WARNING, "Cannot read one of the lines of pattern resource "+resource + "\nLine: "+line);
 						}
 					}
 				}
@@ -532,7 +318,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			e.printStackTrace();
 		}
 	}
-	
+
 	/**
 	 * Pattern containing regular expression is finalized, i.e., created correctly and added to hmAllRePattern.
 	 * @param name
@@ -545,16 +331,16 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		// add rePattern to hmAllRePattern
 		hmAllRePattern.put(name, rePattern.replaceAll("\\\\", "\\\\\\\\"));
 	}
-	
+
 	/**
-	 * Read the resources (of any language) from resource files and 
+	 * Read the resources (of any language) from resource files and
 	 * fill the HashMaps used for normalization tasks.
 	 * @param hmResourcesNormalization
 	 */
 	public void readNormalizationResources(HashMap<String, String> hmResourcesNormalization){
 		try {
 			for (String resource : hmResourcesNormalization.keySet()) {
-				System.err.println("["+toolname+"] Adding normalization resource: "+resource);
+				logger.log(Level.INFO, "Adding normalization resource: "+resource);
 				// create a buffered reader for every normalization resource file
 				BufferedReader in = new BufferedReader(new InputStreamReader
 						(this.getClass().getClassLoader().getResourceAsStream(hmResourcesNormalization.get(resource)),"UTF-8"));
@@ -572,8 +358,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 								}
 							}
 							if ((correctLine == false) && (!(line.matches("")))){
-								System.err.println("["+toolname+"] Cannot read one of the lines of normalization resource "+resource);
-								System.err.println("["+toolname+"] Line: "+line);
+								logger.log(Level.WARNING, "Cannot read one of the lines of normalization resource "+resource + "\nLine: "+line);
 							}
 						}
 					}
@@ -585,14 +370,14 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			e.printStackTrace();
 		}
 	}
-	
+
 	/**
 	 * @see JCasAnnotator_ImplBase#process(JCas)
 	 */
 	public void process(JCas jcas) {
 
 		timex_counter = 0;
-		
+	
 		////////////////////////////////////////////
 		// CHECK SENTENCE BY SENTENCE FOR TIMEXES //
 		////////////////////////////////////////////
@@ -600,16 +385,16 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		while (sentIter.hasNext()) {
 			Sentence s = (Sentence) sentIter.next();
 			if (find_dates) {
-				findTimexes("DATE", hmDatePattern, hmDateOffset, hmDateNormalization, hmDateQuant, s, jcas);
+				timex_counter += rmDate.findTimexes(s, jcas, hmAllNormalization, idGenerator);
 			}
 			if (find_times) {
-				findTimexes("TIME", hmTimePattern, hmTimeOffset, hmTimeNormalization, hmTimeQuant, s, jcas);
+				timex_counter += rmTime.findTimexes(s, jcas, hmAllNormalization, idGenerator);
 			}
 			if (find_durations) {
-				findTimexes("DURATION", hmDurationPattern, hmDurationOffset, hmDurationNormalization, hmDurationQuant, s, jcas);
+				timex_counter += rmDuration.findTimexes(s, jcas, hmAllNormalization, idGenerator);
 			}
 			if (find_sets) {
-				findTimexes("SET", hmSetPattern, hmSetOffset, hmSetNormalization, hmSetQuant, s, jcas);
+				timex_counter += rmSet.findTimexes(s, jcas, hmAllNormalization, idGenerator);
 			}
 		}
 
@@ -626,106 +411,40 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		 * format UNDEF-year-01-01; specific month for values of format UNDEF-last-month
 		 */
 		specifyAmbiguousValues(jcas);
-		
+	
 		removeInvalids(jcas);
 
 		timex_counter_global = timex_counter_global + timex_counter;
-		if (printDetails){
-			System.err.println("["+toolname+"] Number of Timexes added to CAS: "+timex_counter + "(global: "+timex_counter_global+")");
-		}
-		
+		logger.log(Level.FINE, "Number of Timexes added to CAS: "+timex_counter + "(global: "+timex_counter_global+")");
 		saveClearTkFormat(jcas);
 	}
-	
-	private void saveClearTkFormat(JCas jcas) {
-		for (Timex3 heidelTime : JCasUtil.select(jcas, Timex3.class)) {
-			Time clearTime = new Time(jcas);
-			clearTime.setBegin(heidelTime.getBegin());
-			clearTime.setEnd(heidelTime.getEnd());
-			clearTime.setFreq(heidelTime.getTimexFreq());
-			clearTime.setMod(heidelTime.getTimexMod());
-			clearTime.setQuant(heidelTime.getTimexQuant());
-			clearTime.setTimeType(heidelTime.getTimexType());
-			clearTime.setValue(heidelTime.getTimexValue());
-			clearTime.setId(heidelTime.getTimexId());
-			// FunctionInDocument, TemporalFunction, BeginPoint, EndPoint unset!
-			clearTime.addToIndexes();
-		}
-	}
 
-	/**
-	 * Add timex annotation to CAS object.
-	 * 
-	 * @param timexType
-	 * @param begin
-	 * @param end
-	 * @param timexValue
-	 * @param timexId
-	 * @param foundByRule
-	 * @param jcas
-	 */
-	public void addTimexAnnotation(String timexType, int begin, int end, Sentence sentence, String timexValue, String timexQuant,
-			String timexFreq, String timexMod, String timexId, String foundByRule, JCas jcas) {
-		
-		Timex3 annotation = new Timex3(jcas);
-		annotation.setBegin(begin);
-		annotation.setEnd(end);
-
-//		annotation.setFilename(sentence.getFilename());
-//		annotation.setSentId(sentence.getSentenceId());
-
-		FSIterator iterToken = jcas.getAnnotationIndex(Token.type).subiterator(
-				sentence);
-//		String allTokIds = "";
-//		while (iterToken.hasNext()) {
-//			Token tok = (Token) iterToken.next();
-//			if (tok.getBegin() == begin) {
-//				annotation.setFirstTokId(tok.getTokenId());
-//				allTokIds = "BEGIN<-->" + tok.getTokenId();
-//			}
-//			if ((tok.getBegin() > begin) && (tok.getEnd() <= end)) {
-//				allTokIds = allTokIds + "<-->" + tok.getTokenId();
-//			}
-//		}
-//		annotation.setAllTokIds(allTokIds);
-		annotation.setTimexType(timexType);
-		annotation.setTimexValue(timexValue);
-		annotation.setTimexId(timexId);
-		annotation.setFoundByRule(foundByRule);
-		if ((timexType.equals("DATE")) || (timexType.equals("TIME"))){
-			if ((timexValue.startsWith("X")) || (timexValue.startsWith("UNDEF"))){
-				annotation.setFoundByRule(foundByRule+"-relative");
-			}else{
-				annotation.setFoundByRule(foundByRule+"-explicit");
-			}
-		}
-		if (!(timexQuant == null)) {
-			annotation.setTimexQuant(timexQuant);
-		}
-		if (!(timexFreq == null)) {
-			annotation.setTimexFreq(timexFreq);
-		}
-		if (!(timexMod == null)) {
-			annotation.setTimexMod(timexMod);
-		}
-		annotation.addToIndexes();
-		timex_counter++;
-		if (printDetails){
-			System.err.println(annotation.getTimexId()+"EXTRACTION PHASE:   "+" found by:"+annotation.getFoundByRule()+" text:"+annotation.getCoveredText());
-			System.err.println(annotation.getTimexId()+"NORMALIZATION PHASE:"+" found by:"+annotation.getFoundByRule()+" text:"+annotation.getCoveredText()+" value:"+annotation.getTimexValue());
-		}
-	}
+    private void saveClearTkFormat(JCas jcas) {
+            for (Timex3 heidelTime : JCasUtil.select(jcas, Timex3.class)) {
+                    Time clearTime = new Time(jcas);
+                    clearTime.setBegin(heidelTime.getBegin());
+                    clearTime.setEnd(heidelTime.getEnd());
+                    clearTime.setFreq(heidelTime.getTimexFreq());
+                    clearTime.setMod(heidelTime.getTimexMod());
+                    clearTime.setQuant(heidelTime.getTimexQuant());
+                    clearTime.setTimeType(heidelTime.getTimexType());
+                    clearTime.setValue(heidelTime.getTimexValue());
+                    clearTime.setId(heidelTime.getTimexId());
+                    // FunctionInDocument, TemporalFunction, BeginPoint, EndPoint unset!
+                    clearTime.addToIndexes();
+            }
+    }
 
 	/**
 	 * Postprocessing: Remove invalid timex expressions. These are already
 	 * marked as invalid: timexValue().equals("REMOVE")
-	 * 
+	 *
 	 * @param jcas
 	 */
 	public void removeInvalids(JCas jcas) {
 
 		/*
-		 * Iterate over timexes and add invalids to HashSet 
+		 * Iterate over timexes and add invalids to HashSet
 		 * (invalids cannot be removed directly since iterator is used)
 		 */
 		FSIterator iterTimex = jcas.getAnnotationIndex(Timex3.type).iterator();
@@ -741,24 +460,29 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		for (Timex3 timex3 : hsTimexToRemove) {
 			timex3.removeFromIndexes();
 			timex_counter--;
-			if (printDetails){
-				System.err.println(timex3.getTimexId()+"REMOVING PHASE: "+"found by:"+timex3.getFoundByRule()+" text:"+timex3.getCoveredText()+" value:"+timex3.getTimexValue());
-			}
+			logger.log(Level.FINE, timex3.getTimexId()+"REMOVING PHASE: "+"found by:"+timex3.getFoundByRule()+" text:"+timex3.getCoveredText()+" value:"+timex3.getTimexValue());
 		}
 	}
 
-	
+	private void logNearTense(String title, Token token) {
+		logger.log(Level.FINE, title + ": string:"+token.getCoveredText()+" pos:"+token.getPos() + "\n" +
+				"hmAllRePattern.containsKey(tensePos4PresentFuture):"+hmAllRePattern.get("tensePos4PresentFuture") + "\n" +
+				"hmAllRePattern.containsKey(tensePos4Future):"+hmAllRePattern.get("tensePos4Future") + "\n" +
+				"hmAllRePattern.containsKey(tensePos4Past):"+hmAllRePattern.get("tensePos4Past") + "\n" +
+				"CHECK TOKEN:"+token.getPos());
+	}
+
 	/**
 	 * Get the last tense used in the sentence
-	 * 
+	 *
 	 * @param timex
 	 * @return
 	 */
 	public String getClosestTense(Timex3 timex, JCas jcas) {
-		
+	
 		String lastTense = "";
 		String nextTense = "";
-		
+	
 		int tokenCounter = 0;
 		int lastid = 0;
 		int nextid = 0;
@@ -782,25 +506,19 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			Token token = (Token) iterToken.next();
 			tmToken.put(token.getEnd(), token);
 		}
-		
+	
 		// Get the last VERB token
 		for (Integer tokEnd : tmToken.keySet()) {
 			tokenCounter++;
 			if (tokEnd < timex.getBegin()) {
 				Token token = tmToken.get(tokEnd);
-				if (printDetails){
-					System.err.println("GET LAST TENSE: string:"+token.getCoveredText()+" pos:"+token.getPos());
-					System.err.println("hmAllRePattern.containsKey(tensePos4PresentFuture):"+hmAllRePattern.get("tensePos4PresentFuture"));
-					System.err.println("hmAllRePattern.containsKey(tensePos4Future):"+hmAllRePattern.get("tensePos4Future"));
-					System.err.println("hmAllRePattern.containsKey(tensePos4Past):"+hmAllRePattern.get("tensePos4Past"));
-					System.err.println("CHECK TOKEN:"+token.getPos());
-				}
+				logNearTense("GET LAST TENSE", token);
 				if (token.getPos() == null){
-					
+				
 				}
 				else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
 					lastTense = "PRESENTFUTURE";
-					lastid = tokenCounter; 
+					lastid = tokenCounter;
 				}
 				else if ((hmAllRePattern.containsKey("tensePos4Past")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Past")))){
 					lastTense = "PAST";
@@ -825,15 +543,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			if (nextTense.equals("")) {
 				if (tokEnd > timex.getEnd()) {
 					Token token = tmToken.get(tokEnd);
-					if (printDetails){
-						System.err.println("GET NEXT TENSE: string:"+token.getCoveredText()+" pos:"+token.getPos());
-						System.err.println("hmAllRePattern.containsKey(tensePos4PresentFuture):"+hmAllRePattern.get("tensePos4PresentFuture"));
-						System.err.println("hmAllRePattern.containsKey(tensePos4Future):"+hmAllRePattern.get("tensePos4Future"));
-						System.err.println("hmAllRePattern.containsKey(tensePos4Past):"+hmAllRePattern.get("tensePos4Past"));
-						System.err.println("CHECK TOKEN:"+token.getPos());
-					}
+					logNearTense("GET NEXT TENSE", token);
 					if (token.getPos() == null){
-						
+					
 					}
 					else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
 						nextTense = "PRESENTFUTURE";
@@ -853,44 +565,36 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			}
 		}
 		if (lastTense.equals("")){
-			if (printDetails){
-				System.err.println("TENSE: "+nextTense);
-			}
+			logger.log(Level.FINE, "TENSE: "+nextTense);
 			return nextTense;
 		}
 		else if (nextTense.equals("")){
-			if (printDetails){
-				System.err.println("TENSE: "+lastTense);
-			}
+			logger.log(Level.FINE, "TENSE: "+lastTense);
 			return lastTense;
 		}
 		else{
-			// If there is tense before and after the timex token, 
+			// If there is tense before and after the timex token,
 			// return the closer one:
 			if ((tid - lastid) > (nextid - tid)){
-				if (printDetails){
-					System.err.println("TENSE: "+nextTense);
-				}
+				logger.log(Level.FINE, "TENSE: "+nextTense);
 				return nextTense;
 			}
 			else{
-				if (printDetails){
-					System.err.println("TENSE: "+lastTense);
-				}
-				return lastTense;	
-			}	
+				logger.log(Level.FINE, "TENSE: "+lastTense);
+				return lastTense;
+			}
 		}
 	}
-	
-	
+
+
 	/**
 	 * Get the last tense used in the sentence
-	 * 
+	 *
 	 * @param timex
 	 * @return
 	 */
 	public String getLastTense(Timex3 timex, JCas jcas) {
-		
+	
 		String lastTense = "";
 
 		// Get the sentence
@@ -916,15 +620,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		for (Integer tokEnd : tmToken.keySet()) {
 			if (tokEnd < timex.getBegin()) {
 				Token token = tmToken.get(tokEnd);
-				if (printDetails){
-					System.err.println("GET LAST TENSE: string:"+token.getCoveredText()+" pos:"+token.getPos());
-					System.err.println("hmAllRePattern.containsKey(tensePos4PresentFuture):"+hmAllRePattern.get("tensePos4PresentFuture"));
-					System.err.println("hmAllRePattern.containsKey(tensePos4Future):"+hmAllRePattern.get("tensePos4Future"));
-					System.err.println("hmAllRePattern.containsKey(tensePos4Past):"+hmAllRePattern.get("tensePos4Past"));
-					System.err.println("CHECK TOKEN:"+token.getPos());
-				}
+				logNearTense("GET LAST TENSE", token);
 				if (token.getPos() == null){
-					
+				
 				}
 				else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
 					lastTense = "PRESENTFUTURE";
@@ -944,15 +642,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			if (lastTense.equals("")) {
 				if (tokEnd > timex.getEnd()) {
 					Token token = tmToken.get(tokEnd);
-					if (printDetails){
-						System.err.println("GET NEXT TENSE: string:"+token.getCoveredText()+" pos:"+token.getPos());
-						System.err.println("hmAllRePattern.containsKey(tensePos4PresentFuture):"+hmAllRePattern.get("tensePos4PresentFuture"));
-						System.err.println("hmAllRePattern.containsKey(tensePos4Future):"+hmAllRePattern.get("tensePos4Future"));
-						System.err.println("hmAllRePattern.containsKey(tensePos4Past):"+hmAllRePattern.get("tensePos4Past"));
-						System.err.println("CHECK TOKEN:"+token.getPos());
-					}
+					logNearTense("GET NEXT TENSE", token);
 					if (token.getPos() == null){
-						
+					
 					}
 					else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
 						lastTense = "PRESENTFUTURE";
@@ -973,7 +665,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		String prevPos = "";
 		String longTense = "";
 		if (lastTense.equals("PRESENTFUTURE")){
-			for (Integer tokEnd : tmToken.keySet()) { 
+			for (Integer tokEnd : tmToken.keySet()) {
 				if (tokEnd < timex.getBegin()) {
 					Token token = tmToken.get(tokEnd);
 					if ((prevPos.equals("VHZ")) || (prevPos.equals("VBZ")) || (prevPos.equals("VHP")) || (prevPos.equals("VBP"))){
@@ -1002,9 +694,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				}
 			}
 		}
-		if (printDetails){
-			System.err.println("TENSE: "+lastTense);
-		}
+		logger.log(Level.FINE, "TENSE: "+lastTense);
 		return lastTense;
 	}
 
@@ -1025,7 +715,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				linearDates.add(timex);
 			}
 		}
-		
+	
 		////////////////////////////////////////
 		// IS THERE A DOCUMENT CREATION TIME? //
 		////////////////////////////////////////
@@ -1046,7 +736,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		String dctHalf    = "";
 		int dctWeekday    = 0;
 		int dctWeek       = 0;
-		
+	
 		//////////////////////////////////////////////
 		// INFORMATION ABOUT DOCUMENT CREATION TIME //
 		//////////////////////////////////////////////
@@ -1062,50 +752,42 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				dctDecade    = Integer.parseInt(dctValue.substring(2, 3));
 				dctMonth     = Integer.parseInt(dctValue.substring(4, 6));
 				dctDay       = Integer.parseInt(dctValue.substring(6, 8));
-				if (printDetails){
-					System.err.println("dctCentury:"+dctCentury);
-					System.err.println("dctYear:"+dctYear);
-					System.err.println("dctDecade:"+dctDecade);
-					System.err.println("dctMonth:"+dctMonth);
-					System.err.println("dctDay:"+dctDay);
-				}
+				logger.log(Level.FINE, "dctCentury:"+dctCentury);
+				logger.log(Level.FINE, "dctYear:"+dctYear);
+				logger.log(Level.FINE, "dctDecade:"+dctDecade);
+				logger.log(Level.FINE, "dctMonth:"+dctMonth);
+				logger.log(Level.FINE, "dctDay:"+dctDay);
 			}else{
 				dctCentury   = Integer.parseInt(dctValue.substring(0, 2));
 				dctYear      = Integer.parseInt(dctValue.substring(0, 4));
 				dctDecade    = Integer.parseInt(dctValue.substring(2, 3));
 				dctMonth     = Integer.parseInt(dctValue.substring(5, 7));
 				dctDay       = Integer.parseInt(dctValue.substring(8, 10));
-				if (printDetails){
-					System.err.println("dctCentury:"+dctCentury);
-					System.err.println("dctYear:"+dctYear);
-					System.err.println("dctDecade:"+dctDecade);
-					System.err.println("dctMonth:"+dctMonth);
-					System.err.println("dctDay:"+dctDay);
-				}
+				logger.log(Level.FINE, "dctCentury:"+dctCentury);
+				logger.log(Level.FINE, "dctYear:"+dctYear);
+				logger.log(Level.FINE, "dctDecade:"+dctDecade);
+				logger.log(Level.FINE, "dctMonth:"+dctMonth);
+				logger.log(Level.FINE, "dctDay:"+dctDay);
 			}
 			dctQuarter = "Q"+normMonthInQuarter.get(normNumber.get(dctMonth+""));
 			dctHalf = "H1";
 			if (dctMonth > 6){
 				dctHalf = "H2";
 			}
-			
+		
 			// season, week, weekday, have to be calculated
 			dctSeason    = normMonthInSeason.get(normNumber.get(dctMonth+"")+"");
 			dctWeekday   = getWeekdayOfDate(dctYear+"-"+normNumber.get(dctMonth+"")+"-"+ normNumber.get(dctDay+""));
 			dctWeek      = getWeekOfDate(dctYear+"-"+normNumber.get(dctMonth+"") +"-"+ normNumber.get(dctDay+""));
-			if (printDetails){
-				System.err.println("dctQuarter:"+dctQuarter);
-				System.err.println("dctSeason:"+dctSeason);
-				System.err.println("dctWeekday:"+dctWeekday);
-				System.err.println("dctWeek:"+dctWeek);
-			}
+			logger.log(Level.FINE, "dctQuarter:"+dctQuarter);
+			logger.log(Level.FINE, "dctSeason:"+dctSeason);
+			logger.log(Level.FINE, "dctWeekday:"+dctWeekday);
+			logger.log(Level.FINE, "dctWeek:"+dctWeek);
 		}
 		else{
-			if (printDetails){
-				System.err.println("No DCT available...");
-			}
+			logger.log(Level.FINE, "No DCT available...");
 		}
-		
+	
 		//////////////////////////////////////////////
 		// go through list of Date and Time timexes //
 		//////////////////////////////////////////////
@@ -1137,12 +819,12 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 					// get vi season
 					else if ((valueParts[2].equals("SP")) || (valueParts[2].equals("SU")) || (valueParts[2].equals("FA")) || (valueParts[2].equals("WI"))) {
 						viHasSeason  = true;
-						viThisSeason = valueParts[2]; 
+						viThisSeason = valueParts[2];
 					}
 					// get v1 quarter
 					else if ((valueParts[2].equals("Q1")) || (valueParts[2].equals("Q2")) || (valueParts[2].equals("Q3")) || (valueParts[2].equals("Q4"))) {
 						viHasQuarter  = true;
-						viThisQuarter = valueParts[2]; 
+						viThisQuarter = valueParts[2];
 					}
 					else if ((valueParts[2].equals("H1")) || (valueParts[2].equals("H2"))){
 						viHasHalf  = true;
@@ -1165,7 +847,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 					// get vi season
 					else if ((valueParts[1].equals("SP")) || (valueParts[1].equals("SU")) || (valueParts[1].equals("FA")) || (valueParts[1].equals("WI"))) {
 						viHasSeason  = true;
-						viThisSeason = valueParts[1]; 
+						viThisSeason = valueParts[1];
 					}
 					// get vi day
 					if ((valueParts.length > 2) && (valueParts[2].matches("\\d\\d"))) {
@@ -1180,9 +862,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			//////////////////////////
 			// DISAMBIGUATION PHASE //
 			//////////////////////////
-			
+		
 			////////////////////////////////////////////////////
-			// IF YEAR IS COMPLETELY UNSPECIFIED (UNDEF-year) // 
+			// IF YEAR IS COMPLETELY UNSPECIFIED (UNDEF-year) //
 			////////////////////////////////////////////////////
 			String valueNew = value_i;
 			if (value_i.startsWith("UNDEF-year")){
@@ -1201,7 +883,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 						// Tense is PAST
 						if ((last_used_tense.equals("PAST"))){
-							// if dct-month is smaller than vi month, than substrate 1 from dct-year						
+							// if dct-month is smaller than vi month, than substrate 1 from dct-year					
 							if (dctMonth < viThisMonth) {
 								int intNewYear = dctYear - 1;
 								newYearValue = intNewYear + "";
@@ -1261,7 +943,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						newYearValue = getLastMentionedX(linearDates, i, "year");
 					}
 				}
-				
+			
 				// vi has season
 				if ((viHasMonth == false) && (viHasDay == false) && (viHasSeason == true)) {
 					// TODO check tenses?
@@ -1303,13 +985,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				int viThisDecade = Integer.parseInt(value_i.substring(13, 14));
 				// NEWS DOCUMENTS
 				if ((documentTypeNews) && (dctAvailable)){
-					if (printDetails == true){
-						System.err.println("dctCentury"+dctCentury);
-					}
+					logger.log(Level.FINE, "dctCentury"+dctCentury);
 					newCenturyValue = dctCentury+"";
-					if (printDetails == true){
-						System.err.println("dctCentury"+dctCentury);
-					}
+					logger.log(Level.FINE, "dctCentury"+dctCentury);
 					//  Tense is FUTURE
 					if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
 						if (viThisDecade < dctDecade){
@@ -1345,13 +1023,13 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 					valueNew = "19" + valueNew.substring(2);
 				}
 			}
-			
+		
 			////////////////////////////////////////////////////
 			// CHECK IMPLICIT EXPRESSIONS STARTING WITH UNDEF //
 			////////////////////////////////////////////////////
 			else if (value_i.startsWith("UNDEF")){
 				valueNew = value_i;
-				
+			
 				//////////////////
 				// TO CALCULATE //
 				//////////////////
@@ -1363,7 +1041,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						String unit = mr.group(3);
 						String op   = mr.group(4);
 						int diff    = Integer.parseInt(mr.group(5));
-						
+					
 						// check for REFUNIT (only allowed for "year")
 						if ((ltn.equals("REFUNIT")) && (unit.equals("year"))){
 							String dateWithYear = getLastMentionedX(linearDates, i, "dateYear");
@@ -1379,9 +1057,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 								valueNew = valueNew.replace(checkUndef, yearNew+rest);
 							}
 						}
-						
-						
-						
+					
+					
+					
 						// REF and this are handled here
 						if (unit.equals("century")){
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
@@ -1404,7 +1082,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 										lmCentury = Integer.parseInt(lmCentury) - diff + "XX";
 									}
 									else if (op.equals("PLUS")){
-										lmCentury = Integer.parseInt(lmCentury) + diff + "XX";	
+										lmCentury = Integer.parseInt(lmCentury) + diff + "XX";
 									}
 									valueNew = valueNew.replace(checkUndef, lmCentury);
 								}
@@ -1456,7 +1134,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 								else{
 									int intValue = Integer.parseInt(lmYear);
 									if (op.equals("MINUS")){
-										intValue = Integer.parseInt(lmYear) - diff;	
+										intValue = Integer.parseInt(lmYear) - diff;
 									}
 									else if (op.equals("PLUS")){
 										intValue = Integer.parseInt(lmYear) + diff;
@@ -1477,7 +1155,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 									diffYears    = diffYears    * (-1);
 								}
 								intYear    = intYear + diffYears;
-								intQuarter = intQuarter + diffQuarters; 
+								intQuarter = intQuarter + diffQuarters;
 								valueNew = valueNew.replace(checkUndef, intYear+"-Q"+intQuarter);
 							}
 							else{
@@ -1487,7 +1165,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 								}
 								else{
 									int intYear    = Integer.parseInt(lmQuarter.substring(0, 4));
-									int intQuarter = Integer.parseInt(lmQuarter.substring(6)); 
+									int intQuarter = Integer.parseInt(lmQuarter.substring(6));
 									int diffQuarters = diff % 4;
 									diff = diff - diffQuarters;
 									int diffYears    = diff / 4;
@@ -1496,7 +1174,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 										diffYears    = diffYears    * (-1);
 									}
 									intYear    = intYear + diffYears;
-									intQuarter = intQuarter + diffQuarters; 
+									intQuarter = intQuarter + diffQuarters;
 									valueNew = valueNew.replace(checkUndef, intYear+"-Q"+intQuarter);
 								}
 							}
@@ -1569,7 +1247,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 					}
 				}
-			
+		
 				// century
 				else if (value_i.startsWith("UNDEF-last-century")){
 					String checkUndef = "UNDEF-last-century";
@@ -1644,7 +1322,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 							valueNew = valueNew.replace(checkUndef, "XXXX");
 						}
 						else{
-							valueNew = valueNew.replace(checkUndef, lmDecade+"X");						
+							valueNew = valueNew.replace(checkUndef, lmDecade+"X");					
 						}
 					}
 				}
@@ -1663,7 +1341,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 					}
 				}
-				
+			
 				// year
 				else if (value_i.startsWith("UNDEF-last-year")) {
 					String checkUndef = "UNDEF-last-year";
@@ -1698,7 +1376,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				else if (value_i.startsWith("UNDEF-next-year")) {
 					String checkUndef = "UNDEF-next-year";
 					if ((documentTypeNews) && (dctAvailable)){
-						valueNew = valueNew.replace(checkUndef, dctYear +1 +"");	
+						valueNew = valueNew.replace(checkUndef, dctYear +1 +"");
 					}
 					else{
 						String lmYear = getLastMentionedX(linearDates,i,"year");
@@ -1706,11 +1384,11 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 							valueNew = valueNew.replace(checkUndef, "XXXX");
 						}
 						else{
-							valueNew = valueNew.replace(checkUndef, Integer.parseInt(lmYear)+1+"");						
+							valueNew = valueNew.replace(checkUndef, Integer.parseInt(lmYear)+1+"");					
 						}
 					}
 				}
-				
+			
 				// month
 				else if (value_i.startsWith("UNDEF-last-month")) {
 					String checkUndef = "UNDEF-last-month";
@@ -1737,7 +1415,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						if (lmMonth.equals("")){
 							valueNew = valueNew.replace(checkUndef, "XXXX-XX");
 						}
-						else{ 
+						else{
 							valueNew = valueNew.replace(checkUndef, lmMonth);
 						}
 					}
@@ -1757,7 +1435,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 					}
 				}
-				
+			
 				// day
 				else if (value_i.startsWith("UNDEF-last-day")) {
 					String checkUndef = "UNDEF-last-day";
@@ -1788,9 +1466,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 							valueNew = valueNew.replace(checkUndef, lmDay);
 						}
 						if (value_i.equals("UNDEF-this-day")){
-							valueNew = "PRESENT_REF"; 
+							valueNew = "PRESENT_REF";
 						}
-					}					
+					}				
 				}
 				else if (value_i.startsWith("UNDEF-next-day")) {
 					String checkUndef = "UNDEF-next-day";
@@ -1805,7 +1483,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						else{
 							valueNew = valueNew.replace(checkUndef, getXNextDay(lmDay,1));
 						}
-					}	
+					}
 				}
 
 				// week
@@ -1837,7 +1515,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						else{
 							valueNew = valueNew.replace(checkUndef,lmWeek);
 						}
-					}					
+					}				
 				}
 				else if (value_i.startsWith("UNDEF-next-week")) {
 					String checkUndef = "UNDEF-next-week";
@@ -1854,7 +1532,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 					}
 				}
-				
+			
 				// quarter
 				else if (value_i.startsWith("UNDEF-last-quarter")) {
 					String checkUndef = "UNDEF-last-quarter";
@@ -1898,7 +1576,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						else{
 							valueNew = valueNew.replace(checkUndef, lmQuarter);
 						}
-					}					
+					}				
 				}
 				else if (value_i.startsWith("UNDEF-next-quarter")) {
 					String checkUndef = "UNDEF-next-quarter";
@@ -1909,7 +1587,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						else{
 							int newQuarter = Integer.parseInt(dctQuarter.substring(1,2))+1;
 							valueNew = valueNew.replace(checkUndef, dctYear+"-Q"+newQuarter);
-						}						
+						}					
 					}
 					else{
 						String lmQuarter  = getLastMentionedX(linearDates, i, "quarter");
@@ -1929,7 +1607,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 					}
 				}
-				
+			
 				// MONTH NAMES
 				else if (value_i.matches("UNDEF-(last|this|next)-(january|february|march|april|may|june|july|august|september|october|november|december).*")){
 					for (MatchResult mr : findMatches(Pattern.compile("(UNDEF-(last|this|next)-(january|february|march|april|may|june|july|august|september|october|november|december)).*"),value_i)){
@@ -1941,7 +1619,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 							if ((documentTypeNews) && (dctAvailable)){
 								if (dctMonth <= newMonthInt){
 									valueNew = valueNew.replace(checkUndef, dctYear-1+"-"+newMonth);
-								}	
+								}
 								else{
 									valueNew = valueNew.replace(checkUndef, dctYear+"-"+newMonth);
 								}
@@ -1998,12 +1676,12 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 									else{
 										valueNew = valueNew.replace(checkUndef, lmMonth.substring(0,4)+"-"+newMonth);
 									}
-								}	
-							}							
+								}
+							}						
 						}
 					}
 				}
-				
+			
 				// SEASONS NAMES
 				else if (value_i.matches("^UNDEF-(last|this|next)-(SP|SU|FA|WI).*")){
 					for (MatchResult mr : findMatches(Pattern.compile("(UNDEF-(last|this|next)-(SP|SU|FA|WI)).*"),value_i)){
@@ -2090,7 +1768,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 								else{
 									valueNew = valueNew.replace(checkUndef, lmSeason.substring(0,4)+"-"+newSeason);
 								}
-							}							
+							}						
 						}
 						else if (ltn.equals("next")){
 							if ((documentTypeNews) && (dctAvailable)){
@@ -2160,7 +1838,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 					}
 				}
-				
+			
 				// WEEKDAY NAMES
 				// TODO the calculation is strange, but works
 				// TODO tense should be included?!
@@ -2195,7 +1873,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						}
 						else if (ltnd.equals("this")){
 							if ((documentTypeNews) && (dctAvailable)){
-								// TODO tense should be included?!		
+								// TODO tense should be included?!	
 								int diff = (-1) * (dctWeekday - newWeekdayInt);
 								if (diff >= 0) {
 									diff = diff - 7;
@@ -2204,7 +1882,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 									diff = 0;
 								}
 
-								
+							
 								valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + dctMonth + "-"+ dctDay, diff));
 							}
 							else{
@@ -2224,7 +1902,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 									}
 									valueNew = valueNew.replace(checkUndef, getXNextDay(lmDay, diff));
 								}
-							}							
+							}						
 						}
 						else if (ltnd.equals("next")){
 							if ((documentTypeNews) && (dctAvailable)){
@@ -2265,7 +1943,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 								}
 								// Tense is PAST
 								if ((last_used_tense.equals("PAST"))){
-								
+							
 								}
 								valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + dctMonth + "-"+ dctDay, diff));
 							}
@@ -2289,23 +1967,21 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 							}
 						}
 					}
-					
+				
 				}
 				else {
-					System.err.println("["+toolname+"] ATTENTION: UNDEF value for: " + valueNew+" is not handled in disambiguation phase!");
+					logger.log(Level.WARNING, "ATTENTION: UNDEF value for: " + valueNew+" is not handled in disambiguation phase!");
 				}
 			}
 			t_i.removeFromIndexes();
-			if (printDetails){
-				System.err.println(t_i.getTimexId()+" DISAMBIGUATION PHASE: foundBy:"+t_i.getFoundByRule()+" text:"+t_i.getCoveredText()+" value:"+t_i.getTimexValue()+" NEW value:"+valueNew);
-			}
+			logger.log(Level.FINE, t_i.getTimexId()+" DISAMBIGUATION PHASE: foundBy:"+t_i.getFoundByRule()+" text:"+t_i.getCoveredText()+" value:"+t_i.getTimexValue()+" NEW value:"+valueNew);
 			t_i.setTimexValue(valueNew);
 			t_i.addToIndexes();
 			linearDates.set(i, t_i);
 		}
 	}
 
-	
+
 	/**
 	 * @param jcas
 	 */
@@ -2313,7 +1989,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		FSIterator timexIter1 = jcas.getAnnotationIndex(Timex3.type).iterator();
 		HashSet<Timex3> hsTimexesToRemove = new HashSet<Timex3>();
 
-		
+	
 		while (timexIter1.hasNext()) {
 			Timex3 t1 = (Timex3) timexIter1.next();
 			FSIterator timexIter2 = jcas.getAnnotationIndex(Timex3.type)
@@ -2324,7 +2000,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				if (((t1.getBegin() >= t2.getBegin()) && (t1.getEnd() < t2.getEnd())) ||     // t1 starts inside or with t2 and ends before t2 -> remove t1
 						((t1.getBegin() > t2.getBegin()) && (t1.getEnd() <= t2.getEnd()))) { // t1 starts inside t2 and ends with or before t2 -> remove t1
 					hsTimexesToRemove.add(t1);
-				} 
+				}
 				else if (((t2.getBegin() >= t1.getBegin()) && (t2.getEnd() < t1.getEnd())) || // t2 starts inside or with t1 and ends before t1 -> remove t2
 						((t2.getBegin() > t1.getBegin()) && (t2.getEnd() <= t1.getEnd()))) {    // t2 starts inside t1 and ends with or before t1 -> remove t2
 					hsTimexesToRemove.add(t2);
@@ -2340,7 +2016,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 						if (!(t1.equals(t2))){
 							if ((t1.getTimexValue().startsWith("UNDEF")) && (!(t2.getTimexValue().startsWith("UNDEF")))) {
 								hsTimexesToRemove.add(t1);
-							} 
+							}
 							else if ((!(t1.getTimexValue().startsWith("UNDEF"))) && (t2.getTimexValue().startsWith("UNDEF"))) {
 								hsTimexesToRemove.add(t2);
 							}
@@ -2359,219 +2035,12 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		}
 		// remove, finally
 		for (Timex3 t : hsTimexesToRemove) {
-			if (printDetails){
-				System.err.println(t.getTimexId()+"REMOVE DUPLICATE: " + t.getCoveredText()+"(id:"+t.getTimexId()+" value:"+t.getTimexValue()+" found by:"+t.getFoundByRule()+")");
-			}
+			logger.log(Level.FINE, t.getTimexId()+"REMOVE DUPLICATE: " + t.getCoveredText()+"(id:"+t.getTimexId()+" value:"+t.getTimexValue()+" found by:"+t.getFoundByRule()+")");
 			t.removeFromIndexes();
 			timex_counter--;
 		}
 	}
-	
-	/**
-	 * Check token boundaries of expressions.
-	 */
-	public Boolean checkInfrontBehind(MatchResult r, Sentence s) {
-		Boolean ok = true;
-		if (r.start() > 0) {
-			if (((s.getCoveredText().substring(r.start() - 1, r.start()).matches("\\w"))) &&
-					(!(s.getCoveredText().substring(r.start() - 1, r.start()).matches("\\(")))){
-				ok = false;
-			}
-		}
-		if (r.end() < s.getCoveredText().length()) {
-			if ((s.getCoveredText().substring(r.end(), r.end() + 1).matches("[°\\w]")) &&
-					(!(s.getCoveredText().substring(r.end(), r.end() + 1).matches("\\)")))){
-				ok = false;
-			}
-			if (r.end() + 1 < s.getCoveredText().length()) {
-				if (s.getCoveredText().substring(r.end(), r.end() + 2).matches(
-						"[\\.,]\\d")) {
-					ok = false;
-				}
-			}
-		}
-		return ok;
-	}
 
-
-
-	/**
-	 * Identify the part of speech (POS) of a MarchResult.
-	 * @param tokBegin
-	 * @param tokEnd
-	 * @param s
-	 * @param jcas
-	 * @return
-	 */
-	public String getPosFromMatchResult(int tokBegin, int tokEnd, Sentence s, JCas jcas){
-		// get all tokens in sentence
-		HashMap<Integer, Token> hmTokens = new HashMap<Integer, Token>();
-		FSIterator iterTok = jcas.getAnnotationIndex(Token.type).subiterator(s);
-		while (iterTok.hasNext()){
-			Token token = (Token) iterTok.next();
-			hmTokens.put(token.getBegin(), token);
-		}
-		// get correct token
-		String pos = "";
-		if (hmTokens.containsKey(tokBegin)){
-			Token tokenToCheck = hmTokens.get(tokBegin);
-			pos = tokenToCheck.getPos();
-		}
-		return pos;
-	}
-
-    public static List<Pattern> sortByValue(final HashMap<Pattern,String> m) {
-        List<Pattern> keys = new ArrayList<Pattern>();
-        keys.addAll(m.keySet());
-        Collections.sort(keys, new Comparator<Object>() {
-            public int compare(Object o1, Object o2) {
-                Object v1 = m.get(o1);
-                Object v2 = m.get(o2);
-                if (v1 == null) {
-                    return (v2 == null) ? 0 : 1;
-                }
-                else if (v1 instanceof Comparable) {
-                    return ((Comparable) v1).compareTo(v2);
-                }
-                else {
-                    return 0;
-                }
-            }
-        });
-        return keys;
-    }
-
-
-	/**
-	 * Apply the extraction rules, normalization rules
-	 * @param timexType
-	 * @param hmPattern
-	 * @param hmOffset
-	 * @param hmNormalization
-	 * @param hmQuant
-	 * @param s
-	 * @param jcas
-	 */
-	public void findTimexes(String timexType, 
-							HashMap<Pattern, String> hmPattern,
-							HashMap<String, String> hmOffset,
-							HashMap<String, String> hmNormalization,
-							HashMap<String, String> hmQuant,
-							Sentence s,
-							JCas jcas){
-		// Iterator over the rules by sorted by the name of the rules
-		// this is important since later, the timexId will be used to 
-		// decide which of two expressions shall be removed if both
-		// have the same offset
-		for (Iterator<Pattern> i = sortByValue(hmPattern).iterator(); i.hasNext(); ) {
-            Pattern p = (Pattern) i.next();
-
-			for (MatchResult r : findMatches(p, s.getCoveredText())) {
-				boolean infrontBehindOK = checkInfrontBehind(r, s);
-
-				boolean posConstraintOK = true;
-				// CHECK POS CONSTRAINTS
-				if (timexType.equals("DATE")){
-					if (hmDatePosConstraint.containsKey(hmPattern.get(p))){
-						posConstraintOK = checkPosConstraint(s , hmDatePosConstraint.get(hmPattern.get(p)), r, jcas);
-					}
-				}
-				else if (timexType.equals("DURATION")){
-					if (hmDurationPosConstraint.containsKey(hmPattern.get(p))){
-						posConstraintOK = checkPosConstraint(s , hmDurationPosConstraint.get(hmPattern.get(p)), r, jcas);
-					}					
-				}
-				else if (timexType.equals("TIME")){
-					if (hmTimePosConstraint.containsKey(hmPattern.get(p))){
-						posConstraintOK = checkPosConstraint(s , hmTimePosConstraint.get(hmPattern.get(p)), r, jcas);
-					}
-				}
-				else if (timexType.equals("SET")){
-					if (hmSetPosConstraint.containsKey(hmPattern.get(p))){
-						posConstraintOK = checkPosConstraint(s , hmSetPosConstraint.get(hmPattern.get(p)), r, jcas);
-					}
-				}
-				
-				if ((infrontBehindOK == true) && (posConstraintOK == true)) {
-					
-					// Offset of timex expression (in the checked sentence)
-					int timexStart = r.start();
-					int timexEnd   = r.end();
-					
-					// Normalization from Files:
-					
-					// Any offset parameter?
-					if (hmOffset.containsKey(hmPattern.get(p))){
-						String offset    = hmOffset.get(hmPattern.get(p));
-				
-						// pattern for offset information
-						Pattern paOffset = Pattern.compile("group\\(([0-9]+)\\)-group\\(([0-9]+)\\)");
-						for (MatchResult mr : findMatches(paOffset,offset)){
-							int startOffset = Integer.parseInt(mr.group(1));
-							int endOffset   = Integer.parseInt(mr.group(2));
-							timexStart = r.start(startOffset);
-							timexEnd   = r.end(endOffset); 
-						}
-					}
-					
-					// Normalization Parameter
-					if (hmNormalization.containsKey(hmPattern.get(p))){
-						String[] attributes = new String[4];
-						if (timexType.equals("DATE")){
-							attributes = getAttributesForTimexFromFile(hmPattern.get(p), hmDateNormalization, hmDateQuant, hmDateFreq, hmDateMod, r, jcas);
-						}
-						else if (timexType.equals("DURATION")){
-							attributes = getAttributesForTimexFromFile(hmPattern.get(p), hmDurationNormalization, hmDurationQuant, hmDurationFreq, hmDurationMod, r, jcas);
-						}
-						else if (timexType.equals("TIME")){
-							attributes = getAttributesForTimexFromFile(hmPattern.get(p), hmTimeNormalization, hmTimeQuant, hmTimeFreq, hmTimeMod, r, jcas);
-						}
-						else if (timexType.equals("SET")){
-							attributes = getAttributesForTimexFromFile(hmPattern.get(p), hmSetNormalization, hmSetQuant, hmSetFreq, hmSetMod, r, jcas);
-						}
-						addTimexAnnotation(timexType, timexStart + s.getBegin(), timexEnd + s.getBegin(), s, 
-								attributes[0], attributes[1], attributes[2], attributes[3],"t" + timexID, hmPattern.get(p), jcas);
-						timexID++;
-					}
-					else{
-						System.err.println("SOMETHING REALLY WRONG HERE: "+hmPattern.get(p));
-					}
-				}
-			}
-		}
-	}
-	
-	
-	/**
-	 * Check whether the part of speech constraint defined in a rule is satisfied.
-	 * @param s
-	 * @param posConstraint
-	 * @param m
-	 * @param jcas
-	 * @return
-	 */
-	public boolean checkPosConstraint(Sentence s, String posConstraint, MatchResult m, JCas jcas){
-		boolean constraint_ok = true;
-		Pattern paConstraint = Pattern.compile("group\\(([0-9]+)\\):(.*?):");
-		for (MatchResult mr : findMatches(paConstraint,posConstraint)){
-			int groupNumber = Integer.parseInt(mr.group(1));
-			int tokenBegin = s.getBegin() + m.start(groupNumber);
-			int tokenEnd   = s.getBegin() + m.end(groupNumber);
-			String pos = mr.group(2);
-			String pos_as_is = getPosFromMatchResult(tokenBegin, tokenEnd ,s, jcas);
-			if (pos.equals(pos_as_is)){
-				if (printDetails){
-					System.err.println("POS CONSTRAINT IS VALID: pos should be "+pos+" and is "+pos_as_is);
-				}
-			}
-			else {
-				constraint_ok = false;
-				return constraint_ok;
-			}
-		}
-		return constraint_ok;
-	}
-	
 
 	// TODO outsource and include modification to be added to Timex RULES
 	public String getModification(String modString) {
@@ -2591,194 +2060,6 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		return mod;
 	}
 
-
-	/**
-	 * Durations of a finer granularity are mapped to a coarser one if possible, e.g., "PT24H" -> "P1D".
-	 * One may add several further corrections.
-	 */
-	public String correctDurationValue(String value) {
-		if (value.matches("PT[0-9]+H")){
-			for (MatchResult mr : findMatches(Pattern.compile("PT([0-9]+)H"), value)){
-				int hours = Integer.parseInt(mr.group(1));
-				if ((hours % 24) == 0){
-					int days = hours / 24;
-					value = "P"+days+"D";
-				}
-			}
-		}
-		else if (value.matches("PT[0-9]+M")){
-			for (MatchResult mr : findMatches(Pattern.compile("PT([0-9]+)M"), value)){
-				int minutes = Integer.parseInt(mr.group(1));
-				if ((minutes % 60) == 0){
-					int hours = minutes / 60;
-					value = "PT"+hours+"H";
-				}
-			}
-		}
-		else if (value.matches("P[0-9]+M")){
-			for (MatchResult mr : findMatches(Pattern.compile("P([0-9]+)M"), value)){
-				int months = Integer.parseInt(mr.group(1));
-				if ((months % 12) == 0){
-					int years = months / 12;
-					value = "P"+years+"Y";
-				}
-			}
-		}
-		return value;
-	}
-
-
-
-	
-	public String applyRuleFunctions(String tonormalize, MatchResult m){
-		String normalized = "";
-		// pattern for normalization functions + group information
-		// pattern for group information
-		Pattern paNorm  = Pattern.compile("%([A-Za-z0-9]+?)\\(group\\(([0-9]+)\\)\\)");
-		Pattern paGroup = Pattern.compile("group\\(([0-9]+)\\)");
-		while ((tonormalize.contains("%")) || (tonormalize.contains("group"))){
-			// replace normalization functions
-			for (MatchResult mr : findMatches(paNorm,tonormalize)){
-				if (printDetails){
-					System.err.println("-----------------------------------");
-					System.err.println("DEBUGGING: tonormalize:"+tonormalize);
-					System.err.println("DEBUGGING: mr.group():"+mr.group());
-					System.err.println("DEBUGGING: mr.group(1):"+mr.group(1));
-					System.err.println("DEBUGGING: mr.group(2):"+mr.group(2));
-					System.err.println("DEBUGGING: m.group():"+m.group());
-					System.err.println("DEBUGGING: m.group("+Integer.parseInt(mr.group(2))+"):"+m.group(Integer.parseInt(mr.group(2))));
-					System.err.println("DEBUGGING: hmR...:"+hmAllNormalization.get(mr.group(1)).get(m.group(Integer.parseInt(mr.group(2)))));
-					System.err.println("-----------------------------------");
-				}
-				if (! (m.group(Integer.parseInt(mr.group(2))) == null)){
-					String partToReplace = m.group(Integer.parseInt(mr.group(2))).replaceAll("[\n\\s]+", " ");
-					if (!(hmAllNormalization.get(mr.group(1)).containsKey(partToReplace))){
-						System.err.println("Maybe problem with normalization of the resource: "+mr.group(1));
-						System.err.println("Maybe problem with part to replace? "+partToReplace);
-					}
-					tonormalize = tonormalize.replace(mr.group(), hmAllNormalization.get(mr.group(1)).get(partToReplace));
-				}
-				else{
-					if (printDetails){
-						System.err.println("Empty part to normalize in "+mr.group(1));
-					}
-					tonormalize = tonormalize.replace(mr.group(), "");
-				}
-			}
-			// replace other groups
-			for (MatchResult mr : findMatches(paGroup,tonormalize)){
-				if (printDetails){
-					System.err.println("-----------------------------------");
-					System.err.println("DEBUGGING: tonormalize:"+tonormalize);
-					System.err.println("DEBUGGING: mr.group():"+mr.group());
-					System.err.println("DEBUGGING: mr.group(1):"+mr.group(1));
-					System.err.println("DEBUGGING: m.group():"+m.group());
-					System.err.println("DEBUGGING: m.group("+Integer.parseInt(mr.group(1))+"):"+m.group(Integer.parseInt(mr.group(1))));
-					System.err.println("-----------------------------------");
-				}
-				tonormalize = tonormalize.replace(mr.group(), m.group(Integer.parseInt(mr.group(1))));
-			}	
-			// replace substrings
-			Pattern paSubstring = Pattern.compile("%SUBSTRING%\\((.*?),([0-9]+),([0-9]+)\\)");
-			for (MatchResult mr : findMatches(paSubstring,tonormalize)){
-				String substring = mr.group(1).substring(Integer.parseInt(mr.group(2)), Integer.parseInt(mr.group(3)));
-				tonormalize = tonormalize.replace(mr.group(),substring);
-			}
-			// replace lowercase
-			Pattern paLowercase = Pattern.compile("%LOWERCASE%\\((.*?)\\)");
-			for (MatchResult mr : findMatches(paLowercase,tonormalize)){
-				String substring = mr.group(1).toLowerCase();
-				tonormalize = tonormalize.replace(mr.group(),substring);
-			}
-			// replace uppercase
-			Pattern paUppercase = Pattern.compile("%UPPERCASE%\\((.*?)\\)");
-			for (MatchResult mr : findMatches(paUppercase,tonormalize)){
-				String substring = mr.group(1).toUpperCase();
-				tonormalize = tonormalize.replace(mr.group(),substring);
-			}
-			// replace sum, concatenation
-			Pattern paSum = Pattern.compile("%SUM%\\((.*?),(.*?)\\)");
-			for (MatchResult mr : findMatches(paSum,tonormalize)){
-				int newValue = Integer.parseInt(mr.group(1)) + Integer.parseInt(mr.group(2));
-				tonormalize = tonormalize.replace(mr.group(), newValue+"");
-			}
-			// replace normalization function without group
-			Pattern paNormNoGroup = Pattern.compile("%([A-Za-z0-9]+?)\\((.*?)\\)");
-			for (MatchResult mr : findMatches(paNormNoGroup, tonormalize)){
-				tonormalize = tonormalize.replace(mr.group(),hmAllNormalization.get(mr.group(1)).get(mr.group(2)));
-			}
-		}
-		normalized = tonormalize;
-		return normalized;
-	}
-	
-	
-	public String[] getAttributesForTimexFromFile(String rule,
-													HashMap<String, String> hmNormalization,
-													HashMap<String, String> hmQuant,
-													HashMap<String, String> hmFreq,
-													HashMap<String, String> hmMod,
-													MatchResult m, 
-													JCas jcas){
-		String[] attributes = new String[4];
-		String value = "";
-		String quant = "";
-		String freq = "";
-		String mod = "";
-		
-		// Normalize Value
-		String value_normalization_pattern = hmNormalization.get(rule);
-		value = applyRuleFunctions(value_normalization_pattern, m);
-		
-		// get quant
-		if (hmQuant.containsKey(rule)){
-			String quant_normalization_pattern = hmQuant.get(rule);
-			quant = applyRuleFunctions(quant_normalization_pattern, m);
-		}
-
-		// get freq
-		if (hmFreq.containsKey(rule)){
-			String freq_normalization_pattern = hmFreq.get(rule);
-			freq = applyRuleFunctions(freq_normalization_pattern, m);
-		}
-		
-		// get mod
-		if (hmMod.containsKey(rule)){
-			String mod_normalization_pattern = hmMod.get(rule);
-			mod = applyRuleFunctions(mod_normalization_pattern, m);
-		}
-		
-		// For example "P24H" -> "P1D"
-		value = correctDurationValue(value);
-		
-		attributes[0] = value;
-		attributes[1] = quant;
-		attributes[2] = freq;
-		attributes[3] = mod;
-		
-		return attributes;
-	}
-	
-
-	/**
-	 * Find all the matches of a pattern in a charSequence and return the
-	 * results as list.
-	 * 
-	 * @param pattern
-	 * @param s
-	 * @return
-	 */
-	public static Iterable<MatchResult> findMatches(Pattern pattern,
-			CharSequence s) {
-		List<MatchResult> results = new ArrayList<MatchResult>();
-
-		for (Matcher m = pattern.matcher(s); m.find();)
-			results.add(m.toMatchResult());
-
-		return results;
-	}
-
-	
 	/**
 	 * The value of the x of the last mentioned Timex is calculated.
 	 * @param linearDates
@@ -2787,17 +2068,17 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 	 * @return
 	 */
 	public String getLastMentionedX(List<Timex3> linearDates, int i, String x){
-		
+	
 		// Timex for which to get the last mentioned x (i.e., Timex i)
 		Timex3 t_i = linearDates.get(i);
-		
+	
 		String xValue = "";
 		int j = i - 1;
 		while (j >= 0){
 			Timex3 timex = linearDates.get(j);
 			// check that the two timexes to compare do not have the same offset:
 				if (!(t_i.getBegin() == timex.getBegin())){
-				
+			
 					String value = timex.getTimexValue();
 					if (x.equals("century")){
 						if (value.matches("^[0-9][0-9]...*")){
@@ -2911,7 +2192,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 							j--;
 						}
 					}
-					
+				
 				}
 				else{
 					j--;
@@ -2919,10 +2200,10 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		}
 		return xValue;
 	}
-	
+
 	/**
 	 * get the x-next day of date.
-	 * 
+	 *
 	 * @param date
 	 * @param x
 	 * @return
@@ -2944,7 +2225,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 
 	/**
 	 * get the x-next month of date
-	 * 
+	 *
 	 * @param date
 	 * @param x
 	 * @return
@@ -2963,7 +2244,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		}
 		return newDate;
 	}
-	
+
 	public String getXNextWeek(String date, Integer x){
 		String date_no_W = date.replace("W", "");
 		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-w");
@@ -2983,7 +2264,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 
 	/**
 	 * Get the weekday of date
-	 * 
+	 *
 	 * @param date
 	 */
 	public int getWeekdayOfDate(String date) {
@@ -3001,7 +2282,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 
 	/**
 	 * Get the week of date
-	 * 
+	 *
 	 * @param date
 	 * @return
 	 */
@@ -3018,7 +2299,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		}
 		return week;
 	}
-	
+
 	public void readGlobalNormalizationInformation(){
 
 		// MONTH IN QUARTER
@@ -3034,7 +2315,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		normMonthInQuarter.put("10","4");
 		normMonthInQuarter.put("11","4");
 		normMonthInQuarter.put("12","4");
-		
+	
 		// MONTH IN SEASON
 		normMonthInSeason.put("", "");
 		normMonthInSeason.put("01","WI");
@@ -3049,7 +2330,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		normMonthInSeason.put("10","FA");
 		normMonthInSeason.put("11","FA");
 		normMonthInSeason.put("12","WI");
-		
+	
 		// DAY IN WEEK
 		normDayInWeek.put("sunday","1");
 		normDayInWeek.put("monday","2");
@@ -3079,8 +2360,8 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 //		normDayInWeek.put("Thursday","4");
 //		normDayInWeek.put("Friday","5");
 //		normDayInWeek.put("Saturday","6");
-		
-		
+	
+	
 		// NORM MINUTE
 		normNumber.put("0","00");
 		normNumber.put("00","00");
@@ -3153,7 +2434,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		normNumber.put("58","58");
 		normNumber.put("59","59");
 		normNumber.put("60","60");
-		
+	
 		// NORM MONTH
 		normMonthName.put("january","01");
 		normMonthName.put("february","02");
