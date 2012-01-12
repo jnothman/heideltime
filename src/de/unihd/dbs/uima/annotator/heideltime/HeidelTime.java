@@ -254,7 +254,7 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 				String timexType = resource.substring(0, resource.length() - 5).toUpperCase();
 				TimexRuleMatcher rm = new TimexRuleMatcher(timexType, new InputStreamReader (
 						this.getClass().getClassLoader().getResourceAsStream(hmResourcesRules.get(resource))),
-						hmAllRePattern);
+						hmAllRePattern, hmAllNormalization);
 				if ("DATE".equals(timexType)) {
 					rmDate = rm;
 				} else if ("TIME".equals(timexType)) {
@@ -386,16 +386,16 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		while (sentIter.hasNext()) {
 			Sentence s = (Sentence) sentIter.next();
 			if (find_dates) {
-				timex_counter += rmDate.findTimexes(s, jcas, hmAllNormalization, idGenerator);
+				timex_counter += rmDate.findTimexes(s, jcas, idGenerator);
 			}
 			if (find_times) {
-				timex_counter += rmTime.findTimexes(s, jcas, hmAllNormalization, idGenerator);
+				timex_counter += rmTime.findTimexes(s, jcas, idGenerator);
 			}
 			if (find_durations) {
-				timex_counter += rmDuration.findTimexes(s, jcas, hmAllNormalization, idGenerator);
+				timex_counter += rmDuration.findTimexes(s, jcas, idGenerator);
 			}
 			if (find_sets) {
-				timex_counter += rmSet.findTimexes(s, jcas, hmAllNormalization, idGenerator);
+				timex_counter += rmSet.findTimexes(s, jcas, idGenerator);
 			}
 		}
 

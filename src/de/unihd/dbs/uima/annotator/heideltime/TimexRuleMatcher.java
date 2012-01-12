@@ -22,26 +22,30 @@ import org.apache.uima.util.Logger;
 
 import org.cleartk.token.type.Token;
 import org.cleartk.token.type.Sentence;
+
+import de.unihd.dbs.uima.annotator.heideltime.substitutions.Expression;
+import de.unihd.dbs.uima.annotator.heideltime.substitutions.SubstitutionParser;
 import de.unihd.dbs.uima.types.heideltime.Timex3;
 
 public class TimexRuleMatcher {
 	String timexType;
 	Map<Pattern, String> hmPattern;
-	Map<String, String>  hmNormalization;
-	Map<String, String>  hmOffset;
-	Map<String, String>  hmQuant;
-	Map<String, String>  hmFreq;
-	Map<String, String>  hmMod;
+	Map<String, Expression>  hmNormalization;
+	Map<String, Expression>  hmQuant;
+	Map<String, Expression>  hmFreq;
+	Map<String, Expression>  hmMod;
 	Map<String, String>  hmPosConstraint;
+	Map<String, String>  hmOffset;
 	Logger logger;
 
 	Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
 	Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
 
-	public TimexRuleMatcher(String timexType, Map<Pattern,String> hmPattern,
-			Map<String, String> hmNormalization, Map<String, String> hmOffset,
-			Map<String, String> hmQuant, Map<String, String> hmFreq,
-			Map<String, String> hmMod, Map<String, String> hmPosConstraint) {
+	public TimexRuleMatcher(String timexType, Map<Pattern, String> hmPattern,
+			Map<String, Expression> hmNormalization,
+			Map<String, Expression> hmQuant, Map<String, Expression> hmFreq,
+			Map<String, Expression> hmMod, Map<String, String> hmPosConstraint,
+			Map<String, String> hmOffset) {
 		this.timexType = timexType;
 		this.hmPattern = hmPattern;
 		this.hmNormalization = hmNormalization;
@@ -55,14 +59,16 @@ public class TimexRuleMatcher {
 
 	private TimexRuleMatcher(String timexType) {
 		this(timexType, new HashMap<Pattern, String>(), 
-				new HashMap<String, String>(), new HashMap<String, String>(),
-				new HashMap<String, String>(), new HashMap<String, String>(),
+				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
+				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
                 new HashMap<String, String>(), new HashMap<String, String>());
 	}
 
-	public TimexRuleMatcher(String timexType, InputStreamReader istream, Map<String, String> hmAllRePattern)
+	public TimexRuleMatcher(String timexType, InputStreamReader istream,
+			Map<String, String> hmAllRePattern, Map<String, HashMap<String, String>> hmAllNormalization)
 	throws IOException {
 		this(timexType);
+		SubstitutionParser subParser = new SubstitutionParser(hmAllNormalization);
 		BufferedReader br = new BufferedReader(istream);
 		for ( String line; (line=br.readLine()) != null; ){
 			if (line.startsWith("//") || line.equals("")) {
@@ -70,13 +76,13 @@ public class TimexRuleMatcher {
 			}
 			logger.log(Level.FINE, "DEBUGGING: reading rules..."+ line);
 			// check each line for the name, extraction, and normalization part
-			if (!readRule(line, hmAllRePattern)) {
+			if (!readRule(line, hmAllRePattern, subParser)) {
 				logger.log(Level.WARNING, "Cannot read the following line of " + timexType + "rules \nLine: "+line);
 			}
 		}
 	}
 
-	private boolean readRule(String line, Map<String, String> hmAllRePattern) {
+	private boolean readRule(String line, Map<String, String> hmAllRePattern, SubstitutionParser subParser) {
 		Matcher r = paReadRules.matcher(line);
 		if (!r.find()) {
 			return false;
@@ -117,7 +123,7 @@ public class TimexRuleMatcher {
 		// get extraction part
 		hmPattern.put(pattern, rule_name);
 		// get normalization part
-		hmNormalization.put(rule_name, rule_normalization);
+		hmNormalization.put(rule_name, subParser.parse(rule_normalization));
 									
 		/////////////////////////////////////
 		// CHECK FOR ADDITIONAL CONSTRAINS //
@@ -125,23 +131,26 @@ public class TimexRuleMatcher {
 		if (!(r.group(4) == null)){
 			for (MatchResult ro : findMatches(paRuleFeature, r.group(4))){
 				String key = ro.group(1);
-				Map<String, String> hm;
+				String value = ro.group(2);
 				if ("OFFSET".equals(key)) {
-					hm = hmOffset;
-				} else if ("NORM_QUANT".equals(key)) {
-					hm = hmQuant;
-				} else if ("NORM_FREQ".equals(key)) {
-					hm = hmFreq;
-				} else if ("NORM_MOD".equals(key)) {
-					hm = hmMod;
+					hmOffset.put(rule_name, value);
 				} else if ("POS_CONSTRAINT".equals(key)) {
-					hm = hmPosConstraint;
+					hmPosConstraint.put(rule_name, value);
 				} else {
-					logger.log(Level.WARNING, "Unknown rule feature: " + key + " with value: \"" + ro.group(2) + "\" in features: " + r.group(4));
-					continue;
+					Map<String, Expression> hm;
+					if ("NORM_QUANT".equals(key)) {
+						hm = hmQuant;
+					} else if ("NORM_FREQ".equals(key)) {
+						hm = hmFreq;
+					} else if ("NORM_MOD".equals(key)) {
+						hm = hmMod;
+					} else {
+						logger.log(Level.WARNING, "Unknown rule feature: " + key + " with value: \"" + value + "\" in features: " + r.group(4));
+						continue;
+					}
+					hm.put(rule_name, subParser.parse(value));
 				}
-				hm.put(rule_name, ro.group(2));
-				debugSummary += "\n" + key + ": " + rule_normalization;
+				debugSummary += "\n" + key + ": " + value;
 			}
 		}
 		logger.log(Level.FINER, debugSummary);
@@ -154,8 +163,7 @@ public class TimexRuleMatcher {
 	 * @param jcas
 	 * @return the number of timexes found
 	 */
-	public int findTimexes(Sentence s, JCas jcas,
-			Map<String, HashMap<String,String>> hmAllNormalization, IdGenerator idGen) {
+	public int findTimexes(Sentence s, JCas jcas, IdGenerator idGen) {
 		int nAdded = 0;
 		// Iterator over the rules by sorted by the name of the rules
 		// this is important since later, the timexId will be used to
@@ -198,7 +206,7 @@ public class TimexRuleMatcher {
 					// Normalization Parameter
 					if (hmNormalization.containsKey(ruleName)){
 						String[] attributes = new String[4];
-						attributes = getAttributesForTimexFromFile(ruleName, r, jcas, hmAllNormalization);
+						attributes = getAttributesForTimexFromFile(ruleName, r, jcas);
 						addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
 								attributes[0], attributes[1], attributes[2], attributes[3], idGen.next(), ruleName, jcas);
 						nAdded++;
@@ -306,21 +314,21 @@ public class TimexRuleMatcher {
 		return ok;
 	}
 
-	private String getAttributeForTimexFromFile(Map<String, String> hm, String rule, MatchResult m, JCas jcas, Map<String, HashMap<String,String>> hmAllNormalization){
+	private String getAttributeForTimexFromFile(Map<String, Expression> hm, String rule, MatchResult m, JCas jcas){
 		if (hm.containsKey(rule)){
-			return applyRuleFunctions(hm.get(rule), m, hmAllNormalization);
+			return hm.get(rule).evaluate(m).toString();
 		}
 		return "";
 	}
 
-	public String[] getAttributesForTimexFromFile(String rule, MatchResult m, JCas jcas, Map<String, HashMap<String,String>> hmAllNormalization){
+	public String[] getAttributesForTimexFromFile(String rule, MatchResult m, JCas jcas){
 		String[] attributes = new String[4];
-		attributes[0] = getAttributeForTimexFromFile(hmNormalization, rule, m, jcas, hmAllNormalization);
+		attributes[0] = getAttributeForTimexFromFile(hmNormalization, rule, m, jcas);
 		// For example "P24H" -> "P1D"
 		attributes[0] = correctDurationValue(attributes[0]);
-		attributes[1] = getAttributeForTimexFromFile(hmQuant, rule, m, jcas, hmAllNormalization);
-		attributes[2] = getAttributeForTimexFromFile(hmFreq, rule, m, jcas, hmAllNormalization);
-		attributes[3] = getAttributeForTimexFromFile(hmMod, rule, m, jcas, hmAllNormalization);
+		attributes[1] = getAttributeForTimexFromFile(hmQuant, rule, m, jcas);
+		attributes[2] = getAttributeForTimexFromFile(hmFreq, rule, m, jcas);
+		attributes[3] = getAttributeForTimexFromFile(hmMod, rule, m, jcas);
 		return attributes;
 	}
 
@@ -385,7 +393,7 @@ public class TimexRuleMatcher {
 	}
 
 
-	public String applyRuleFunctions(String tonormalize, MatchResult m, Map<String, HashMap<String,String>> hmAllNormalization){
+	private String applyRuleFunctions(String tonormalize, MatchResult m, Map<String, HashMap<String,String>> hmAllNormalization){
 		String normalized = "";
 		// pattern for normalization functions + group information
 		// pattern for group information
@@ -403,7 +411,7 @@ public class TimexRuleMatcher {
 						"DEBUGGING: m.group("+Integer.parseInt(mr.group(2))+"):"+m.group(Integer.parseInt(mr.group(2))) + "\n" +
 						"DEBUGGING: hmR...:"+hmAllNormalization.get(mr.group(1)).get(m.group(Integer.parseInt(mr.group(2)))) + "\n" +
 						"-----------------------------------");
-				if (! (m.group(Integer.parseInt(mr.group(2))) == null)){
+				if (m.group(Integer.parseInt(mr.group(2))) != null){
 					String partToReplace = m.group(Integer.parseInt(mr.group(2))).replaceAll("[\n\\s]+", " ");
 					if (!(hmAllNormalization.get(mr.group(1)).containsKey(partToReplace))){
 						logger.log(Level.WARNING, "Maybe problem with normalization of the resource: "+mr.group(1) + "\n" +
