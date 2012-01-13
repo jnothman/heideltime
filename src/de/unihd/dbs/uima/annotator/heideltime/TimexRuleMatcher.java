@@ -35,7 +35,7 @@ public class TimexRuleMatcher {
 	Map<String, Expression>  hmQuant;
 	Map<String, Expression>  hmFreq;
 	Map<String, Expression>  hmMod;
-	Map<String, String>  hmPosConstraint;
+	Map<String, List<PosConstraint>>  hmPosConstraint;
 	Map<String, String>  hmOffset;
 	Logger logger;
 	
@@ -51,16 +51,26 @@ public class TimexRuleMatcher {
 			return this.name.compareTo(other.name);
 		}
 	}
+	
+	class PosConstraint {
+		int group;
+		String pos;
+		public PosConstraint(int group, String pos) {
+			this.group = group;
+			this.pos = pos;
+		}
+		
+	}
 
 	static final Pattern paVariable = Pattern.compile("%(re[a-zA-Z0-9]*)");
 	static final Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
 	static final Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
 	static final Pattern paPosConstraint = Pattern.compile("group\\(([0-9]+)\\):(.*?):");
-
+	
 	public TimexRuleMatcher(String timexType, List<RulePattern> patterns,
 			Map<String, Expression> hmNormalization,
 			Map<String, Expression> hmQuant, Map<String, Expression> hmFreq,
-			Map<String, Expression> hmMod, Map<String, String> hmPosConstraint,
+			Map<String, Expression> hmMod, Map<String, List<PosConstraint>> hmPosConstraint,
 			Map<String, String> hmOffset) {
 		this.timexType = timexType;
 		this.patterns = patterns;
@@ -78,7 +88,7 @@ public class TimexRuleMatcher {
 		this(timexType, new ArrayList<RulePattern>(),
 				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
 				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
-                new HashMap<String, String>(), new HashMap<String, String>());
+                new HashMap<String, List<PosConstraint>>(), new HashMap<String, String>());
 	}
 
 	public TimexRuleMatcher(String timexType, InputStreamReader istream,
@@ -154,7 +164,7 @@ public class TimexRuleMatcher {
 				if ("OFFSET".equals(key)) {
 					hmOffset.put(rule_name, value);
 				} else if ("POS_CONSTRAINT".equals(key)) {
-					hmPosConstraint.put(rule_name, value);
+					hmPosConstraint.put(rule_name, parsePosConstraintList(value));
 				} else {
 					Map<String, Expression> hm;
 					if ("NORM_QUANT".equals(key)) {
@@ -247,6 +257,14 @@ public class TimexRuleMatcher {
 
 		return results;
 	}
+	
+	public List<PosConstraint> parsePosConstraintList(String input) {
+		List<PosConstraint> res = new ArrayList<PosConstraint>();
+		for (MatchResult mr : findMatches(paPosConstraint, input)){
+			res.add(new PosConstraint(Integer.parseInt(mr.group(1)), mr.group(2)));
+		}
+		return res;
+	}
 
 	/**
 	 * Check whether the part of speech constraint defined in a rule is satisfied.
@@ -256,19 +274,17 @@ public class TimexRuleMatcher {
 	 * @param jcas
 	 * @return
 	 */
-	public boolean checkPosConstraint(Sentence s, String posConstraint, MatchResult m, JCas jcas){
-		if (posConstraint == null) {
+	public boolean checkPosConstraint(Sentence s, List<PosConstraint> constraints, MatchResult m, JCas jcas){
+		if (constraints == null) {
 			return true;
 		}
 		// All of one or more constraints must hold
-		for (MatchResult mr : findMatches(paPosConstraint, posConstraint)){
-			int groupNumber = Integer.parseInt(mr.group(1));
-			int tokenBegin = s.getBegin() + m.start(groupNumber);
-			int tokenEnd   = s.getBegin() + m.end(groupNumber);
-			String expectedPos = mr.group(2);
+		for (PosConstraint constraint : constraints) {
+			int tokenBegin = s.getBegin() + m.start(constraint.group);
+			int tokenEnd   = s.getBegin() + m.end(constraint.group);
 			String actualPos = getPosFromMatchResult(tokenBegin, tokenEnd, s, jcas);
-			if (expectedPos.equals(actualPos)){
-				logger.log(Level.FINE, "POS CONSTRAINT IS VALID: pos should be "+expectedPos+" and is "+actualPos);
+			if (constraint.pos.equals(actualPos)){
+				logger.log(Level.FINE, "POS CONSTRAINT IS VALID: pos should be "+ constraint.pos +" and is "+actualPos);
 			}
 			else {
 				return false;
