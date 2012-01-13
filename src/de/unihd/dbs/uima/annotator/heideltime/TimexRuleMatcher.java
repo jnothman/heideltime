@@ -145,6 +145,8 @@ public class TimexRuleMatcher {
 		
 		// Ensure word boundaries
 		rule_extraction = "\\b" + rule_extraction + "\\b(?![\\.,]\\d)";
+		// More perfectly matching prior functionality would be:
+		// rule_extraction = "(?:^|(?<=\\W))" + rule_extraction + "(?:$|(?=\\W))(?![\\.,]\\d)";
 		return Pattern.compile(rule_extraction);
 	}
 
