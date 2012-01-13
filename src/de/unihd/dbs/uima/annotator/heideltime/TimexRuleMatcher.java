@@ -52,8 +52,9 @@ public class TimexRuleMatcher {
 		}
 	}
 
-	Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
-	Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
+	static final Pattern paVariable = Pattern.compile("%(re[a-zA-Z0-9]*)");
+	static final Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
+	static final Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
 
 	public TimexRuleMatcher(String timexType, List<RulePattern> patterns,
 			Map<String, Expression> hmNormalization,
@@ -97,6 +98,24 @@ public class TimexRuleMatcher {
 		}
 		Collections.sort(patterns);
 	}
+	
+	private Pattern buildExtractionPattern(String rule_extraction, Map<String, String> hmAllRePattern) {
+		// Substitute %xxxx expressions
+		for (MatchResult mr : findMatches(paVariable, rule_extraction)){
+			logger.log(Level.FINE, "DEBUGGING: replacing patterns..."+ mr.group());
+			String repl = hmAllRePattern.get(mr.group(1));
+			if (repl == null) {
+				throw new IllegalArgumentException("Pattern not found: " + mr.group(1));
+			}
+			rule_extraction = rule_extraction.replaceAll("%"+mr.group(1), hmAllRePattern.get(mr.group(1)));
+		}
+		// Spaces match all whitespace
+		rule_extraction = rule_extraction.replaceAll(" ", "[\\\\s]+");
+		
+		// Ensure word boundaries
+		rule_extraction = "\\b" + rule_extraction + "\\b(?![\\.,]\\d)";
+		return Pattern.compile(rule_extraction);
+	}
 
 	private boolean readRule(String line, Map<String, String> hmAllRePattern, SubstitutionParser subParser) {
 		Matcher r = paReadRules.matcher(line);
@@ -112,34 +131,17 @@ public class TimexRuleMatcher {
 		// RULE EXTRACTION PARTS ARE TRANSLATED INTO REGULAR EXPRESSSIONS //
 		////////////////////////////////////////////////////////////////////
 		// create pattern for rule extraction part
-		Pattern paVariable = Pattern.compile("%(re[a-zA-Z0-9]*)");
-		for (MatchResult mr : findMatches(paVariable, rule_extraction)){
-			logger.log(Level.FINE, "DEBUGGING: replacing patterns..."+ mr.group());
-			if (!(hmAllRePattern.containsKey(mr.group(1)))){
-				logger.log(Level.SEVERE, "Error creating rule:"+rule_name + "\nThe following pattern used in this rule does not exist, does it? %"+mr.group(1));
-				System.exit(-1);
-			}
-			rule_extraction = rule_extraction.replaceAll("%"+mr.group(1), hmAllRePattern.get(mr.group(1)));
-		}
-		rule_extraction = rule_extraction.replaceAll(" ", "[\\\\s]+");
-		Pattern pattern = null;
-		try{
-			pattern = Pattern.compile(rule_extraction);
-		}
-		catch (java.util.regex.PatternSyntaxException e){
-			logger.log(Level.SEVERE, "Compiling rules resulted in errors." +
-					"\nProblematic rule is "+rule_name +
-					"\nCannot compile pattern: "+rule_extraction);
-			e.printStackTrace();
-			System.exit(-1);
-		}
-		
-		debugSummary += rule_extraction + "\nNorm: " + rule_normalization;
 	
 		// get extraction part
-		patterns.add(new RulePattern(rule_name, pattern));
+		patterns.add(new RulePattern(rule_name, buildExtractionPattern(rule_extraction, hmAllRePattern)));
 		// get normalization part
-		hmNormalization.put(rule_name, subParser.parse(rule_normalization));
+		try {
+			hmNormalization.put(rule_name, subParser.parse(rule_normalization));
+		} catch (RuntimeException e) {
+			logger.log(Level.SEVERE, "Error constructing extraction pattern for rule " + rule_name);
+			throw e;
+		}
+		debugSummary += rule_extraction + "\nNorm: " + rule_normalization;
 									
 		/////////////////////////////////////
 		// CHECK FOR ADDITIONAL CONSTRAINS //
@@ -187,15 +189,13 @@ public class TimexRuleMatcher {
 		// have the same offset
 		for (RulePattern rulePattern : patterns) {
 			for (MatchResult r : findMatches(rulePattern.pattern, s.getCoveredText())) {
-				boolean infrontBehindOK = checkInfrontBehind(r, s);
-
 				boolean posConstraintOK = true;
 				// CHECK POS CONSTRAINTS
 				String ruleName = rulePattern.name;
 				if (hmPosConstraint.containsKey(ruleName)){
 					posConstraintOK = checkPosConstraint(s , hmPosConstraint.get(ruleName), r, jcas);
 				}
-				if ((infrontBehindOK == true) && (posConstraintOK == true)) {
+				if (posConstraintOK == true) {
 				
 					// Offset of timex expression (in the checked sentence)
 					int timexStart = r.start();
@@ -278,33 +278,6 @@ public class TimexRuleMatcher {
 			}
 		}
 		return constraint_ok;
-	}
-
-
-	/**
-	 * Check token boundaries of expressions.
-	 */
-	public Boolean checkInfrontBehind(MatchResult r, Sentence s) {
-		Boolean ok = true;
-		if (r.start() > 0) {
-			if (((s.getCoveredText().substring(r.start() - 1, r.start()).matches("\\w"))) &&
-					(!(s.getCoveredText().substring(r.start() - 1, r.start()).matches("\\(")))){
-				ok = false;
-			}
-		}
-		if (r.end() < s.getCoveredText().length()) {
-			if ((s.getCoveredText().substring(r.end(), r.end() + 1).matches("[°\\w]")) &&
-					(!(s.getCoveredText().substring(r.end(), r.end() + 1).matches("\\)")))){
-				ok = false;
-			}
-			if (r.end() + 1 < s.getCoveredText().length()) {
-				if (s.getCoveredText().substring(r.end(), r.end() + 2).matches(
-						"[\\.,]\\d")) {
-					ok = false;
-				}
-			}
-		}
-		return ok;
 	}
 
 	private String getAttributeForTimexFromFile(Map<String, Expression> hm, String rule, MatchResult m, JCas jcas){
