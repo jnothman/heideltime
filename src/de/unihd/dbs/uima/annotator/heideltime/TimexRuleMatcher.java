@@ -161,14 +161,14 @@ public class TimexRuleMatcher {
 		// create pattern for rule extraction part
 	
 		// get extraction part
-		patterns.add(new RulePattern(rule_name, buildExtractionPattern(rule_extraction, hmAllRePattern)));
-		// get normalization part
 		try {
-			hmNormalization.put(rule_name, subParser.parse(rule_normalization));
+				patterns.add(new RulePattern(rule_name, buildExtractionPattern(rule_extraction, hmAllRePattern)));	
 		} catch (RuntimeException e) {
 			logger.log(Level.SEVERE, "Error constructing extraction pattern for rule " + rule_name);
 			throw e;
 		}
+		// get normalization part
+		hmNormalization.put(rule_name, subParser.parse(rule_normalization));
 		debugSummary += rule_extraction + "\nNorm: " + rule_normalization;
 									
 		/////////////////////////////////////
