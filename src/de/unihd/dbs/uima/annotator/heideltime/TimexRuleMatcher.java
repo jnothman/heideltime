@@ -55,6 +55,7 @@ public class TimexRuleMatcher {
 	static final Pattern paVariable = Pattern.compile("%(re[a-zA-Z0-9]*)");
 	static final Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
 	static final Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
+	static final Pattern paPosConstraint = Pattern.compile("group\\(([0-9]+)\\):(.*?):");
 
 	public TimexRuleMatcher(String timexType, List<RulePattern> patterns,
 			Map<String, Expression> hmNormalization,
@@ -189,45 +190,40 @@ public class TimexRuleMatcher {
 		// have the same offset
 		for (RulePattern rulePattern : patterns) {
 			for (MatchResult r : findMatches(rulePattern.pattern, s.getCoveredText())) {
-				boolean posConstraintOK = true;
-				// CHECK POS CONSTRAINTS
 				String ruleName = rulePattern.name;
-				if (hmPosConstraint.containsKey(ruleName)){
-					posConstraintOK = checkPosConstraint(s , hmPosConstraint.get(ruleName), r, jcas);
+				if (!checkPosConstraint(s, hmPosConstraint.get(ruleName), r, jcas)) {
+					continue;
 				}
-				if (posConstraintOK == true) {
-				
-					// Offset of timex expression (in the checked sentence)
-					int timexStart = r.start();
-					int timexEnd   = r.end();
-				
-					// Normalization from Files:
-				
-					// Any offset parameter?
-					if (hmOffset.containsKey(ruleName)){
-						String offset    = hmOffset.get(ruleName);
+				// Offset of timex expression (in the checked sentence)
+				int timexStart = r.start();
+				int timexEnd   = r.end();
 			
-						// pattern for offset information
-						Pattern paOffset = Pattern.compile("group\\(([0-9]+)\\)-group\\(([0-9]+)\\)");
-						for (MatchResult mr : findMatches(paOffset,offset)){
-							int startOffset = Integer.parseInt(mr.group(1));
-							int endOffset   = Integer.parseInt(mr.group(2));
-							timexStart = r.start(startOffset);
-							timexEnd   = r.end(endOffset);
-						}
+				// Normalization from Files:
+			
+				// Any offset parameter?
+				if (hmOffset.containsKey(ruleName)){
+					String offset    = hmOffset.get(ruleName);
+		
+					// pattern for offset information
+					Pattern paOffset = Pattern.compile("group\\(([0-9]+)\\)-group\\(([0-9]+)\\)");
+					for (MatchResult mr : findMatches(paOffset,offset)){
+						int startOffset = Integer.parseInt(mr.group(1));
+						int endOffset   = Integer.parseInt(mr.group(2));
+						timexStart = r.start(startOffset);
+						timexEnd   = r.end(endOffset);
 					}
-				
-					// Normalization Parameter
-					if (hmNormalization.containsKey(ruleName)){
-						String[] attributes = new String[4];
-						attributes = getAttributesForTimexFromFile(ruleName, r, jcas);
-						addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
-								attributes[0], attributes[1], attributes[2], attributes[3], idGen.next(), ruleName, jcas);
-						nAdded++;
-					}
-					else{
-						logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE: "+rulePattern.name);
-					}
+				}
+			
+				// Normalization Parameter
+				if (hmNormalization.containsKey(ruleName)){
+					String[] attributes = new String[4];
+					attributes = getAttributesForTimexFromFile(ruleName, r, jcas);
+					addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
+							attributes[0], attributes[1], attributes[2], attributes[3], idGen.next(), ruleName, jcas);
+					nAdded++;
+				}
+				else{
+					logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE: "+rulePattern.name);
 				}
 			}
 		}
@@ -261,23 +257,24 @@ public class TimexRuleMatcher {
 	 * @return
 	 */
 	public boolean checkPosConstraint(Sentence s, String posConstraint, MatchResult m, JCas jcas){
-		boolean constraint_ok = true;
-		Pattern paConstraint = Pattern.compile("group\\(([0-9]+)\\):(.*?):");
-		for (MatchResult mr : findMatches(paConstraint,posConstraint)){
+		if (posConstraint == null) {
+			return true;
+		}
+		// All of one or more constraints must hold
+		for (MatchResult mr : findMatches(paPosConstraint, posConstraint)){
 			int groupNumber = Integer.parseInt(mr.group(1));
 			int tokenBegin = s.getBegin() + m.start(groupNumber);
 			int tokenEnd   = s.getBegin() + m.end(groupNumber);
-			String pos = mr.group(2);
-			String pos_as_is = getPosFromMatchResult(tokenBegin, tokenEnd ,s, jcas);
-			if (pos.equals(pos_as_is)){
-				logger.log(Level.FINE, "POS CONSTRAINT IS VALID: pos should be "+pos+" and is "+pos_as_is);
+			String expectedPos = mr.group(2);
+			String actualPos = getPosFromMatchResult(tokenBegin, tokenEnd, s, jcas);
+			if (expectedPos.equals(actualPos)){
+				logger.log(Level.FINE, "POS CONSTRAINT IS VALID: pos should be "+expectedPos+" and is "+actualPos);
 			}
 			else {
-				constraint_ok = false;
-				return constraint_ok;
+				return false;
 			}
 		}
-		return constraint_ok;
+		return true;
 	}
 
 	private String getAttributeForTimexFromFile(Map<String, Expression> hm, String rule, MatchResult m, JCas jcas){
@@ -334,7 +331,7 @@ public class TimexRuleMatcher {
 	}
 
 	/**
-	 * Identify the part of speech (POS) of a MarchResult.
+	 * Identify the part of speech (POS) of a MatchResult.
 	 * @param tokBegin
 	 * @param tokEnd
 	 * @param s
@@ -342,20 +339,16 @@ public class TimexRuleMatcher {
 	 * @return
 	 */
 	public String getPosFromMatchResult(int tokBegin, int tokEnd, Sentence s, JCas jcas){
-		// get all tokens in sentence
-		HashMap<Integer, Token> hmTokens = new HashMap<Integer, Token>();
+		// TODO: precalculate tok.getBegin() -> tok.getPos() mapping for entire jcas to avoid repeated iteration
 		FSIterator iterTok = jcas.getAnnotationIndex(Token.type).subiterator(s);
 		while (iterTok.hasNext()){
 			Token token = (Token) iterTok.next();
-			hmTokens.put(token.getBegin(), token);
+			if (token.getBegin() == tokBegin) {
+				return token.getPos();
+			}
 		}
-		// get correct token
-		String pos = "";
-		if (hmTokens.containsKey(tokBegin)){
-			Token tokenToCheck = hmTokens.get(tokBegin);
-			pos = tokenToCheck.getPos();
-		}
-		return pos;
+		logger.log(Level.WARNING, "POS not found at " + tokBegin + " in: \"" + s.getCoveredText() + "\"");
+		return "";
 	}
 
 	/**
