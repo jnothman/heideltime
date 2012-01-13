@@ -233,16 +233,17 @@ public class TimexRuleMatcher {
 				}
 			
 				// Normalization Parameter
-				if (hmNormalization.containsKey(ruleName)){
-					String[] attributes = new String[4];
-					attributes = getAttributesForTimexFromFile(ruleName, r, jcas);
-					addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
-							attributes[0], attributes[1], attributes[2], attributes[3], idGen.next(), ruleName, jcas);
-					nAdded++;
+				if (!hmNormalization.containsKey(ruleName)) {
+					logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE (could not find normalization pattern): "+rulePattern.name);
+					continue;
 				}
-				else{
-					logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE: "+rulePattern.name);
-				}
+				addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
+						correctDurationValue(evaluateAttribute(hmNormalization, ruleName, r)),
+						evaluateAttribute(hmQuant, ruleName, r),
+						evaluateAttribute(hmFreq, ruleName, r),
+						evaluateAttribute(hmMod, ruleName, r),
+						idGen.next(), ruleName, jcas);
+				nAdded++;
 			}
 		}
 		return nAdded;
@@ -301,22 +302,11 @@ public class TimexRuleMatcher {
 		return true;
 	}
 
-	private String getAttributeForTimexFromFile(Map<String, Expression> hm, String rule, MatchResult m, JCas jcas){
+	private String evaluateAttribute(Map<String, Expression> hm, String rule, MatchResult m){
 		if (hm.containsKey(rule)){
 			return hm.get(rule).evaluate(m).toString();
 		}
 		return "";
-	}
-
-	public String[] getAttributesForTimexFromFile(String rule, MatchResult m, JCas jcas){
-		String[] attributes = new String[4];
-		attributes[0] = getAttributeForTimexFromFile(hmNormalization, rule, m, jcas);
-		// For example "P24H" -> "P1D"
-		attributes[0] = correctDurationValue(attributes[0]);
-		attributes[1] = getAttributeForTimexFromFile(hmQuant, rule, m, jcas);
-		attributes[2] = getAttributeForTimexFromFile(hmFreq, rule, m, jcas);
-		attributes[3] = getAttributeForTimexFromFile(hmMod, rule, m, jcas);
-		return attributes;
 	}
 
 	/**
