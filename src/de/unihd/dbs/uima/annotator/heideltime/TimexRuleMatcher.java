@@ -217,36 +217,41 @@ public class TimexRuleMatcher {
 		// have the same offset
 		for (RulePattern rulePattern : patterns) {
 			for (MatchResult r : findMatches(rulePattern.pattern, s.getCoveredText())) {
-				String ruleName = rulePattern.name;
-				if (!checkPosConstraint(s, hmPosConstraint.get(ruleName), r, jcas)) {
-					continue;
+				if (processRuleMatch(rulePattern.name, r, s, jcas, idGen)) {
+					nAdded++;
 				}
-				// Offset of timex expression (in the checked sentence)
-				int timexStart = r.start();
-				int timexEnd   = r.end();
-			
-				// Any offset parameter?
-				if (hmOffset.containsKey(ruleName)){
-					OffsetPair offset = hmOffset.get(ruleName);
-					timexStart = r.start(offset.beginGroup);
-					timexEnd   = r.end(offset.endGroup);
-				}
-			
-				// Normalization Parameter
-				if (!hmNormalization.containsKey(ruleName)) {
-					logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE (could not find normalization pattern): "+rulePattern.name);
-					continue;
-				}
-				addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
-						correctDurationValue(evaluateAttribute(hmNormalization, ruleName, r)),
-						evaluateAttribute(hmQuant, ruleName, r),
-						evaluateAttribute(hmFreq, ruleName, r),
-						evaluateAttribute(hmMod, ruleName, r),
-						idGen.next(), ruleName, jcas);
-				nAdded++;
 			}
 		}
 		return nAdded;
+	}
+	
+	private boolean processRuleMatch(String ruleName, MatchResult r, Sentence s, JCas jcas, IdGenerator idGen) {
+		if (!checkPosConstraint(s, hmPosConstraint.get(ruleName), r, jcas)) {
+			return false;
+		}
+		// Offset of timex expression (in the checked sentence)
+		int timexStart = r.start();
+		int timexEnd   = r.end();
+	
+		// Any offset parameter?
+		if (hmOffset.containsKey(ruleName)){
+			OffsetPair offset = hmOffset.get(ruleName);
+			timexStart = r.start(offset.beginGroup);
+			timexEnd   = r.end(offset.endGroup);
+		}
+	
+		// Normalization Parameter
+		if (!hmNormalization.containsKey(ruleName)) {
+			logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE (could not find normalization pattern): "+ruleName);
+			return false;
+		}
+		addTimexAnnotation(timexStart + s.getBegin(), timexEnd + s.getBegin(), s,
+				correctDurationValue(evaluateAttribute(hmNormalization, ruleName, r)),
+				evaluateAttribute(hmQuant, ruleName, r),
+				evaluateAttribute(hmFreq, ruleName, r),
+				evaluateAttribute(hmMod, ruleName, r),
+				idGen.next(), ruleName, jcas);
+		return true;
 	}
 
 	/**
