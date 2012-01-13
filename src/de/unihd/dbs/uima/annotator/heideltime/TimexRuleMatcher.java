@@ -73,6 +73,9 @@ public class TimexRuleMatcher {
 
 		public OffsetPair(String input) {
 			Matcher m = paOffsetPair.matcher(input);
+			if (!m.find()) {
+				throw new IllegalArgumentException("Invalid OffsetPair descriptor: \"" + input + "\"");
+			}
 			beginGroup = Integer.parseInt(m.group(1));
 			endGroup = Integer.parseInt(m.group(1));
 		}
@@ -167,37 +170,43 @@ public class TimexRuleMatcher {
 			logger.log(Level.SEVERE, "Error constructing extraction pattern for rule " + rule_name);
 			throw e;
 		}
-		// get normalization part
-		hmNormalization.put(rule_name, subParser.parse(rule_normalization));
-		debugSummary += rule_extraction + "\nNorm: " + rule_normalization;
-									
-		/////////////////////////////////////
-		// CHECK FOR ADDITIONAL CONSTRAINS //
-		/////////////////////////////////////
-		if (!(r.group(4) == null)){
-			for (MatchResult ro : findMatches(paRuleFeature, r.group(4))){
-				String key = ro.group(1);
-				String value = ro.group(2);
-				if ("OFFSET".equals(key)) {
-					hmOffset.put(rule_name, new OffsetPair(value));
-				} else if ("POS_CONSTRAINT".equals(key)) {
-					hmPosConstraint.put(rule_name, parsePosConstraintList(value));
-				} else {
-					Map<String, Expression> hm;
-					if ("NORM_QUANT".equals(key)) {
-						hm = hmQuant;
-					} else if ("NORM_FREQ".equals(key)) {
-						hm = hmFreq;
-					} else if ("NORM_MOD".equals(key)) {
-						hm = hmMod;
+		
+		try {
+			// get normalization part
+			hmNormalization.put(rule_name, subParser.parse(rule_normalization));
+			debugSummary += rule_extraction + "\nNorm: " + rule_normalization;
+										
+			/////////////////////////////////////
+			// CHECK FOR ADDITIONAL CONSTRAINS //
+			/////////////////////////////////////
+			if (!(r.group(4) == null)){
+				for (MatchResult ro : findMatches(paRuleFeature, r.group(4))){
+					String key = ro.group(1);
+					String value = ro.group(2);
+					if ("OFFSET".equals(key)) {
+						hmOffset.put(rule_name, new OffsetPair(value));
+					} else if ("POS_CONSTRAINT".equals(key)) {
+						hmPosConstraint.put(rule_name, parsePosConstraintList(value));
 					} else {
-						logger.log(Level.WARNING, "Unknown rule feature: " + key + " with value: \"" + value + "\" in features: " + r.group(4));
-						continue;
+						Map<String, Expression> hm;
+						if ("NORM_QUANT".equals(key)) {
+							hm = hmQuant;
+						} else if ("NORM_FREQ".equals(key)) {
+							hm = hmFreq;
+						} else if ("NORM_MOD".equals(key)) {
+							hm = hmMod;
+						} else {
+							logger.log(Level.WARNING, "Unknown rule feature: " + key + " with value: \"" + value + "\" in features: " + r.group(4));
+							continue;
+						}
+						hm.put(rule_name, subParser.parse(value));
 					}
-					hm.put(rule_name, subParser.parse(value));
+					debugSummary += "\n" + key + ": " + value;
 				}
-				debugSummary += "\n" + key + ": " + value;
 			}
+		} catch (RuntimeException e) {
+			logger.log(Level.SEVERE, "Error while intepreting attributes of rule " + rule_name);
+			throw e;
 		}
 		logger.log(Level.FINER, debugSummary);
 		return true;
