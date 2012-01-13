@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,7 +30,7 @@ import de.unihd.dbs.uima.types.heideltime.Timex3;
 
 public class TimexRuleMatcher {
 	String timexType;
-	Map<Pattern, String> hmPattern;
+	List<RulePattern> patterns; // Sorted by value
 	Map<String, Expression>  hmNormalization;
 	Map<String, Expression>  hmQuant;
 	Map<String, Expression>  hmFreq;
@@ -37,17 +38,31 @@ public class TimexRuleMatcher {
 	Map<String, String>  hmPosConstraint;
 	Map<String, String>  hmOffset;
 	Logger logger;
+	
+	class RulePattern implements Comparable<RulePattern> {
+		Pattern pattern;
+		String name;
+		public RulePattern(String name, Pattern pattern) {
+			this.name = name;
+			this.pattern = pattern;
+		}
+		
+		public int compareTo(RulePattern other) {
+			return this.name.compareTo(other.name);
+		}
+	}
 
 	Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
 	Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
 
-	public TimexRuleMatcher(String timexType, Map<Pattern, String> hmPattern,
+	public TimexRuleMatcher(String timexType, List<RulePattern> patterns,
 			Map<String, Expression> hmNormalization,
 			Map<String, Expression> hmQuant, Map<String, Expression> hmFreq,
 			Map<String, Expression> hmMod, Map<String, String> hmPosConstraint,
 			Map<String, String> hmOffset) {
 		this.timexType = timexType;
-		this.hmPattern = hmPattern;
+		this.patterns = patterns;
+		Collections.sort(patterns);
 		this.hmNormalization = hmNormalization;
 		this.hmOffset = hmOffset;
 		this.hmQuant = hmQuant;
@@ -58,7 +73,7 @@ public class TimexRuleMatcher {
 	}
 
 	private TimexRuleMatcher(String timexType) {
-		this(timexType, new HashMap<Pattern, String>(), 
+		this(timexType, new ArrayList<RulePattern>(),
 				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
 				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
                 new HashMap<String, String>(), new HashMap<String, String>());
@@ -80,6 +95,7 @@ public class TimexRuleMatcher {
 				logger.log(Level.WARNING, "Cannot read the following line of " + timexType + "rules \nLine: "+line);
 			}
 		}
+		Collections.sort(patterns);
 	}
 
 	private boolean readRule(String line, Map<String, String> hmAllRePattern, SubstitutionParser subParser) {
@@ -121,7 +137,7 @@ public class TimexRuleMatcher {
 		debugSummary += rule_extraction + "\nNorm: " + rule_normalization;
 	
 		// get extraction part
-		hmPattern.put(pattern, rule_name);
+		patterns.add(new RulePattern(rule_name, pattern));
 		// get normalization part
 		hmNormalization.put(rule_name, subParser.parse(rule_normalization));
 									
@@ -169,15 +185,13 @@ public class TimexRuleMatcher {
 		// this is important since later, the timexId will be used to
 		// decide which of two expressions shall be removed if both
 		// have the same offset
-		for (Iterator<Pattern> i = sortByValue(hmPattern).iterator(); i.hasNext(); ) {
-            Pattern p = (Pattern) i.next();
-
-			for (MatchResult r : findMatches(p, s.getCoveredText())) {
+		for (RulePattern rulePattern : patterns) {
+			for (MatchResult r : findMatches(rulePattern.pattern, s.getCoveredText())) {
 				boolean infrontBehindOK = checkInfrontBehind(r, s);
 
 				boolean posConstraintOK = true;
 				// CHECK POS CONSTRAINTS
-				String ruleName = hmPattern.get(p);
+				String ruleName = rulePattern.name;
 				if (hmPosConstraint.containsKey(ruleName)){
 					posConstraintOK = checkPosConstraint(s , hmPosConstraint.get(ruleName), r, jcas);
 				}
@@ -212,34 +226,13 @@ public class TimexRuleMatcher {
 						nAdded++;
 					}
 					else{
-						logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE: "+hmPattern.get(p));
+						logger.log(Level.WARNING, "SOMETHING REALLY WRONG HERE: "+rulePattern.name);
 					}
 				}
 			}
 		}
 		return nAdded;
 	}
-
-    public static List<Pattern> sortByValue(final Map<Pattern,String> m) {
-        List<Pattern> keys = new ArrayList<Pattern>();
-        keys.addAll(m.keySet());
-        Collections.sort(keys, new Comparator<Object>() {
-            public int compare(Object o1, Object o2) {
-                Object v1 = m.get(o1);
-                Object v2 = m.get(o2);
-                if (v1 == null) {
-                    return (v2 == null) ? 0 : 1;
-                }
-                else if (v1 instanceof Comparable) {
-                    return ((Comparable) v1).compareTo(v2);
-                }
-                else {
-                    return 0;
-                }
-            }
-        });
-        return keys;
-    }
 
 	/**
 	 * Find all the matches of a pattern in a charSequence and return the
@@ -391,84 +384,6 @@ public class TimexRuleMatcher {
 		}
 		return pos;
 	}
-
-
-	private String applyRuleFunctions(String tonormalize, MatchResult m, Map<String, HashMap<String,String>> hmAllNormalization){
-		String normalized = "";
-		// pattern for normalization functions + group information
-		// pattern for group information
-		Pattern paNorm  = Pattern.compile("%([A-Za-z0-9]+?)\\(group\\(([0-9]+)\\)\\)");
-		Pattern paGroup = Pattern.compile("group\\(([0-9]+)\\)");
-		while ((tonormalize.contains("%")) || (tonormalize.contains("group"))){
-			// replace normalization functions
-			for (MatchResult mr : findMatches(paNorm, tonormalize)){
-				logger.log(Level.FINE, "-----------------------------------" + "\n" +
-						"DEBUGGING: tonormalize:"+tonormalize + "\n" +
-						"DEBUGGING: mr.group():"+mr.group() + "\n" +
-						"DEBUGGING: mr.group(1):"+mr.group(1) + "\n" +
-						"DEBUGGING: mr.group(2):"+mr.group(2) + "\n" +
-						"DEBUGGING: m.group():"+m.group() + "\n" +
-						"DEBUGGING: m.group("+Integer.parseInt(mr.group(2))+"):"+m.group(Integer.parseInt(mr.group(2))) + "\n" +
-						"DEBUGGING: hmR...:"+hmAllNormalization.get(mr.group(1)).get(m.group(Integer.parseInt(mr.group(2)))) + "\n" +
-						"-----------------------------------");
-				if (m.group(Integer.parseInt(mr.group(2))) != null){
-					String partToReplace = m.group(Integer.parseInt(mr.group(2))).replaceAll("[\n\\s]+", " ");
-					if (!(hmAllNormalization.get(mr.group(1)).containsKey(partToReplace))){
-						logger.log(Level.WARNING, "Maybe problem with normalization of the resource: "+mr.group(1) + "\n" +
-								"Maybe problem with part to replace? "+partToReplace);
-					}
-					tonormalize = tonormalize.replace(mr.group(), hmAllNormalization.get(mr.group(1)).get(partToReplace));
-				}
-				else{
-					logger.log(Level.FINE, "Empty part to normalize in "+mr.group(1));
-					tonormalize = tonormalize.replace(mr.group(), "");
-				}
-			}
-			// replace other groups
-			for (MatchResult mr : findMatches(paGroup,tonormalize)){
-				logger.log(Level.FINE, "-----------------------------------" + "\n" +
-						"DEBUGGING: tonormalize:"+tonormalize + "\n" +
-						"DEBUGGING: mr.group():"+mr.group() + "\n" +
-						"DEBUGGING: mr.group(1):"+mr.group(1) + "\n" +
-						"DEBUGGING: m.group():"+m.group() + "\n" +
-						"DEBUGGING: m.group("+Integer.parseInt(mr.group(1))+"):"+m.group(Integer.parseInt(mr.group(1))) + "\n" +
-						"-----------------------------------");
-				tonormalize = tonormalize.replace(mr.group(), m.group(Integer.parseInt(mr.group(1))));
-			}
-			// replace substrings
-			Pattern paSubstring = Pattern.compile("%SUBSTRING%\\((.*?),([0-9]+),([0-9]+)\\)");
-			for (MatchResult mr : findMatches(paSubstring,tonormalize)){
-				String substring = mr.group(1).substring(Integer.parseInt(mr.group(2)), Integer.parseInt(mr.group(3)));
-				tonormalize = tonormalize.replace(mr.group(),substring);
-			}
-			// replace lowercase
-			Pattern paLowercase = Pattern.compile("%LOWERCASE%\\((.*?)\\)");
-			for (MatchResult mr : findMatches(paLowercase,tonormalize)){
-				String substring = mr.group(1).toLowerCase();
-				tonormalize = tonormalize.replace(mr.group(),substring);
-			}
-			// replace uppercase
-			Pattern paUppercase = Pattern.compile("%UPPERCASE%\\((.*?)\\)");
-			for (MatchResult mr : findMatches(paUppercase,tonormalize)){
-				String substring = mr.group(1).toUpperCase();
-				tonormalize = tonormalize.replace(mr.group(),substring);
-			}
-			// replace sum, concatenation
-			Pattern paSum = Pattern.compile("%SUM%\\((.*?),(.*?)\\)");
-			for (MatchResult mr : findMatches(paSum,tonormalize)){
-				int newValue = Integer.parseInt(mr.group(1)) + Integer.parseInt(mr.group(2));
-				tonormalize = tonormalize.replace(mr.group(), newValue+"");
-			}
-			// replace normalization function without group
-			Pattern paNormNoGroup = Pattern.compile("%([A-Za-z0-9]+?)\\((.*?)\\)");
-			for (MatchResult mr : findMatches(paNormNoGroup, tonormalize)){
-				tonormalize = tonormalize.replace(mr.group(), hmAllNormalization.get(mr.group(1)).get(mr.group(2)));
-			}
-		}
-		normalized = tonormalize;
-		return normalized;
-	}
-
 
 	/**
 	 * Add timex annotation to CAS object.
