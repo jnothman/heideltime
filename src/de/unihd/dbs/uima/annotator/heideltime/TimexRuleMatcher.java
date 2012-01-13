@@ -36,7 +36,7 @@ public class TimexRuleMatcher {
 	Map<String, Expression>  hmFreq;
 	Map<String, Expression>  hmMod;
 	Map<String, List<PosConstraint>>  hmPosConstraint;
-	Map<String, String>  hmOffset;
+	Map<String, OffsetPair>  hmOffset;
 	Logger logger;
 	
 	class RulePattern implements Comparable<RulePattern> {
@@ -55,23 +55,40 @@ public class TimexRuleMatcher {
 	class PosConstraint {
 		int group;
 		String pos;
+
 		public PosConstraint(int group, String pos) {
 			this.group = group;
 			this.pos = pos;
 		}
+	}
+
+	class OffsetPair {
+		int beginGroup;
+		int endGroup;
 		
+		public OffsetPair(int beginGroup, int endGroup) {
+			this.beginGroup = beginGroup;
+			this.endGroup = endGroup;
+		}
+
+		public OffsetPair(String input) {
+			Matcher m = paOffsetPair.matcher(input);
+			beginGroup = Integer.parseInt(m.group(1));
+			endGroup = Integer.parseInt(m.group(1));
+		}
 	}
 
 	static final Pattern paVariable = Pattern.compile("%(re[a-zA-Z0-9]*)");
 	static final Pattern paRuleFeature = Pattern.compile(",([A-Z_]+)=\"(.*?)\"");
 	static final Pattern paReadRules = Pattern.compile("RULENAME=\"(.*?)\",EXTRACTION=\"(.*?)\",NORM_VALUE=\"(.*?)\"(.*)");
 	static final Pattern paPosConstraint = Pattern.compile("group\\(([0-9]+)\\):(.*?):");
+	static final Pattern paOffsetPair = Pattern.compile("group\\(([0-9]+)\\)-group\\(([0-9]+)\\)");
 	
 	public TimexRuleMatcher(String timexType, List<RulePattern> patterns,
 			Map<String, Expression> hmNormalization,
 			Map<String, Expression> hmQuant, Map<String, Expression> hmFreq,
 			Map<String, Expression> hmMod, Map<String, List<PosConstraint>> hmPosConstraint,
-			Map<String, String> hmOffset) {
+			Map<String, OffsetPair> hmOffset) {
 		this.timexType = timexType;
 		this.patterns = patterns;
 		Collections.sort(patterns);
@@ -88,7 +105,7 @@ public class TimexRuleMatcher {
 		this(timexType, new ArrayList<RulePattern>(),
 				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
 				new HashMap<String, Expression>(), new HashMap<String, Expression>(),
-                new HashMap<String, List<PosConstraint>>(), new HashMap<String, String>());
+                new HashMap<String, List<PosConstraint>>(), new HashMap<String, OffsetPair>());
 	}
 
 	public TimexRuleMatcher(String timexType, InputStreamReader istream,
@@ -162,7 +179,7 @@ public class TimexRuleMatcher {
 				String key = ro.group(1);
 				String value = ro.group(2);
 				if ("OFFSET".equals(key)) {
-					hmOffset.put(rule_name, value);
+					hmOffset.put(rule_name, new OffsetPair(value));
 				} else if ("POS_CONSTRAINT".equals(key)) {
 					hmPosConstraint.put(rule_name, parsePosConstraintList(value));
 				} else {
@@ -208,20 +225,11 @@ public class TimexRuleMatcher {
 				int timexStart = r.start();
 				int timexEnd   = r.end();
 			
-				// Normalization from Files:
-			
 				// Any offset parameter?
 				if (hmOffset.containsKey(ruleName)){
-					String offset    = hmOffset.get(ruleName);
-		
-					// pattern for offset information
-					Pattern paOffset = Pattern.compile("group\\(([0-9]+)\\)-group\\(([0-9]+)\\)");
-					for (MatchResult mr : findMatches(paOffset,offset)){
-						int startOffset = Integer.parseInt(mr.group(1));
-						int endOffset   = Integer.parseInt(mr.group(2));
-						timexStart = r.start(startOffset);
-						timexEnd   = r.end(endOffset);
-					}
+					OffsetPair offset = hmOffset.get(ruleName);
+					timexStart = r.start(offset.beginGroup);
+					timexEnd   = r.end(offset.endGroup);
 				}
 			
 				// Normalization Parameter
