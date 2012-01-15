@@ -477,8 +477,10 @@ public class FullSpecifier {
 						String checkUndef = mr.group(1);
 						String ltn  = mr.group(2);
 						String unit = mr.group(3);
-						String op   = mr.group(4);
 						int diff    = Integer.parseInt(mr.group(5));
+						if ("MINUS".equals(mr.group(4))) {
+							diff = -diff;
+						}
 					
 						// check for REFUNIT (only allowed for "year")
 						if ((ltn.equals("REFUNIT")) && (unit.equals("year"))){
@@ -487,9 +489,6 @@ public class FullSpecifier {
 								valueNew = valueNew.replace(checkUndef, "XXXX");
 							}
 							else{
-								if (op.equals("MINUS")){
-									diff = diff * (-1);
-								}
 								int yearNew = Integer.parseInt(dateWithYear.substring(0,4)) + diff;
 								String rest = dateWithYear.substring(4);
 								valueNew = valueNew.replace(checkUndef, yearNew+rest);
@@ -501,14 +500,7 @@ public class FullSpecifier {
 						// REF and this are handled here
 						if (unit.equals("century")){
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								int century = dctCentury;
-								if (op.equals("MINUS")){
-									century = dctCentury - diff;
-								}
-								else if (op.equals("PLUS")){
-									century = dctCentury + diff;
-								}
-								valueNew = valueNew.replace(checkUndef, century+"XX");
+								valueNew = valueNew.replace(checkUndef, dctCentury+diff+"XX");
 							}
 							else{
 								String lmCentury = getLastMentionedX(linearDates, i, "century");
@@ -516,26 +508,14 @@ public class FullSpecifier {
 									valueNew = valueNew.replace(checkUndef, "XX");
 								}
 								else{
-									if (op.equals("MINUS")){
-										lmCentury = Integer.parseInt(lmCentury) - diff + "XX";
-									}
-									else if (op.equals("PLUS")){
-										lmCentury = Integer.parseInt(lmCentury) + diff + "XX";
-									}
+									lmCentury = Integer.parseInt(lmCentury) + diff + "XX";
 									valueNew = valueNew.replace(checkUndef, lmCentury);
 								}
 							}
 						}
 						else if (unit.equals("decade")){
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								int decade = dctDecade;
-								if (op.equals("MINUS")){
-									decade = dctDecade - diff;
-								}
-								else if (op.equals("PLUS")){
-									decade = dctDecade + diff;
-								}
-								valueNew = valueNew.replace(checkUndef, decade+"X");
+								valueNew = valueNew.replace(checkUndef, dctDecade + diff +"X");
 							}
 							else{
 								String lmDecade = getLastMentionedX(linearDates, i, "decade");
@@ -543,26 +523,14 @@ public class FullSpecifier {
 									valueNew = valueNew.replace(checkUndef, "XXX");
 								}
 								else{
-									if (op.equals("MINUS")){
-										lmDecade = Integer.parseInt(lmDecade) - diff + "X";
-									}
-									else if (op.equals("PLUS")){
-										lmDecade = Integer.parseInt(lmDecade) + diff + "X";
-									}
+									lmDecade = Integer.parseInt(lmDecade) + diff + "X";
 									valueNew = valueNew.replace(checkUndef, lmDecade);
 								}
 							}
 						}
 						else if (unit.equals("year")){
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								int intValue = dctYear;
-								if (op.equals("MINUS")){
-									intValue = dctYear - diff;
-								}
-								else if (op.equals("PLUS")){
-									intValue = dctYear + diff;
-								}
-								valueNew = valueNew.replace(checkUndef, intValue + "");
+								valueNew = valueNew.replace(checkUndef, dctYear + diff + "");
 							}
 							else{
 								String lmYear = getLastMentionedX(linearDates, i, "year");
@@ -570,31 +538,16 @@ public class FullSpecifier {
 									valueNew = valueNew.replace(checkUndef, "XXXX");
 								}
 								else{
-									int intValue = Integer.parseInt(lmYear);
-									if (op.equals("MINUS")){
-										intValue = Integer.parseInt(lmYear) - diff;
-									}
-									else if (op.equals("PLUS")){
-										intValue = Integer.parseInt(lmYear) + diff;
-									}
-									valueNew = valueNew.replace(checkUndef, intValue+"");
+									valueNew = valueNew.replace(checkUndef, Integer.parseInt(lmYear) + diff + "");
 								}
 							}
 						}
 						else if (unit.equals("quarter")){
+							int intYear = 0;
+							int intQuarter = 0;
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								int intYear    = dctYear;
-								int intQuarter = Integer.parseInt(dctQuarter.substring(1));
-								int diffQuarters = diff % 4;
-								diff = diff - diffQuarters;
-								int diffYears    = diff / 4;
-								if (op.equals("MINUS")){
-									diffQuarters = diffQuarters * (-1);
-									diffYears    = diffYears    * (-1);
-								}
-								intYear    = intYear + diffYears;
-								intQuarter = intQuarter + diffQuarters;
-								valueNew = valueNew.replace(checkUndef, intYear+"-Q"+intQuarter);
+								intYear    = dctYear;
+								intQuarter = Integer.parseInt(dctQuarter.substring(1));
 							}
 							else{
 								String lmQuarter = getLastMentionedX(linearDates, i, "quarter");
@@ -602,26 +555,22 @@ public class FullSpecifier {
 									valueNew = valueNew.replace(checkUndef, "XXXX-XX");
 								}
 								else{
-									int intYear    = Integer.parseInt(lmQuarter.substring(0, 4));
-									int intQuarter = Integer.parseInt(lmQuarter.substring(6));
-									int diffQuarters = diff % 4;
-									diff = diff - diffQuarters;
-									int diffYears    = diff / 4;
-									if (op.equals("MINUS")){
-										diffQuarters = diffQuarters * (-1);
-										diffYears    = diffYears    * (-1);
-									}
-									intYear    = intYear + diffYears;
-									intQuarter = intQuarter + diffQuarters;
-									valueNew = valueNew.replace(checkUndef, intYear+"-Q"+intQuarter);
+									intYear    = Integer.parseInt(lmQuarter.substring(0, 4));
+									intQuarter = Integer.parseInt(lmQuarter.substring(6));
 								}
+							}
+							if (valueNew.matches(checkUndef)) {
+								// Not yet replaced
+								int diffQuarters = (Math.abs(diff) % 4) * (diff < 0 ? -1 : 1);
+								diff -= diffQuarters;
+								int diffYears    = diff / 4;
+								intYear    = intYear + diffYears;
+								intQuarter = intQuarter + diffQuarters;
+								valueNew = valueNew.replace(checkUndef, intYear+"-Q"+intQuarter);
 							}
 						}
 						else if (unit.equals("month")){
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								if (op.equals("MINUS")){
-									diff = diff * (-1);
-								}
 								valueNew = valueNew.replace(checkUndef, getXNextMonth(dctYear + "-" + normNumber.get(dctMonth+""), diff));
 							}
 							else{
@@ -630,22 +579,13 @@ public class FullSpecifier {
 									valueNew = valueNew.replace(checkUndef, "XXXX-XX");
 								}
 								else{
-									if (op.equals("MINUS")){
-										diff = diff * (-1);
-									}
 									valueNew = valueNew.replace(checkUndef, getXNextMonth(lmMonth, diff));
 								}
 							}
 						}
 						else if (unit.equals("week")){
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								if (op.equals("MINUS")){
-									diff = diff * 7 * (-1);
-								}
-								else if (op.equals("PLUS")){
-									diff = diff * 7;
-								}
-								valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"	+ dctDay, diff));
+								valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"	+ dctDay, diff * 7));
 							}
 							else{
 								String lmDay = getLastMentionedX(linearDates, i, "day");
@@ -653,21 +593,12 @@ public class FullSpecifier {
 									valueNew = valueNew.replace(checkUndef, "XXXX-XX-XX");
 								}
 								else{
-									if (op.equals("MINUS")){
-										diff = diff * 7 * (-1);
-									}
-									else if (op.equals("PLUS")){
-										diff = diff * 7;
-									}
-									valueNew = valueNew.replace(checkUndef, getXNextDay(lmDay, diff));
+									valueNew = valueNew.replace(checkUndef, getXNextDay(lmDay, diff * 7));
 								}
 							}
 						}
 						else if (unit.equals("day")){
 							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								if (op.equals("MINUS")){
-									diff = diff * (-1);
-								}
 								valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"	+ dctDay, diff));
 							}
 							else{
@@ -676,9 +607,6 @@ public class FullSpecifier {
 									valueNew = valueNew.replace(checkUndef, "XXXX-XX-XX");
 								}
 								else{
-									if (op.equals("MINUS")){
-										diff = diff * (-1);
-									}
 									valueNew = valueNew.replace(checkUndef, getXNextDay(lmDay, diff));
 								}
 							}
