@@ -1714,140 +1714,59 @@ public class FullSpecifier {
 				"CHECK TOKEN:"+token.getPos());
 	}
 	
-	public String getLastMentionedX(List<Timex3> linearDates, int i, String x){
-		
-		// Timex for which to get the last mentioned x (i.e., Timex i)
-		Timex3 t_i = linearDates.get(i);
+	static final Map<String, Pattern> xPatternMap = new HashMap<String, Pattern>();
 	
-		String xValue = "";
-		int j = i - 1;
-		while (j >= 0){
-			Timex3 timex = linearDates.get(j);
-			// check that the two timexes to compare do not have the same offset:
-				if (!(t_i.getBegin() == timex.getBegin())){
-			
-					String value = timex.getTimexValue();
-					if (x.equals("century")){
-						if (value.matches("^[0-9][0-9]...*")){
-							xValue = value.substring(0,2);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("decade")){
-						if (value.matches("^[0-9][0-9][0-9]..*")){
-							xValue = value.substring(0,3);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("year")){
-						if (value.matches("^[0-9][0-9][0-9][0-9].*")){
-							xValue = value.substring(0,4);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("dateYear")){
-						if (value.matches("^[0-9][0-9][0-9][0-9].*")){
-							xValue = value;
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("month")){
-						if (value.matches("^[0-9][0-9][0-9][0-9]-[0-9][0-9].*")){
-							xValue = value.substring(0,7);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("day")){
-						if (value.matches("^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].*")){
-							xValue = value.substring(0,10);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("week")){
-						if (value.matches("^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].*")){
-							for (MatchResult r : HeidelTime.findMatches(Pattern.compile("^(([0-9][0-9][0-9][0-9])-[0-9][0-9]-[0-9][0-9]).*"), value)){
-								xValue = r.group(2)+"-W"+getWeekOfDate(r.group(1));
-								break;
-							}
-							break;
-						}
-						else if (value.matches("^[0-9][0-9][0-9][0-9]-W[0-9][0-9].*")){
-							for (MatchResult r : HeidelTime.findMatches(Pattern.compile("^([0-9][0-9][0-9][0-9]-W[0-9][0-9]).*"), value)){
-								xValue = r.group(1);
-								break;
-							}
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("quarter")){
-						if (value.matches("^[0-9][0-9][0-9][0-9]-[0-9][0-9].*")){
-							String month   = value.substring(5,7);
-							String quarter = normMonthInQuarter.get(month);
-							xValue = value.substring(0,4)+"-Q"+quarter;
-							break;
-						}
-						else if (value.matches("^[0-9][0-9][0-9][0-9]-Q[1234].*")){
-							xValue = value.substring(0,7);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("dateQuarter")){
-						if (value.matches("^[0-9][0-9][0-9][0-9]-Q[1234].*")){
-							xValue = value.substring(0,7);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-					else if (x.equals("season")){
-						if (value.matches("^[0-9][0-9][0-9][0-9]-[0-9][0-9].*")){
-							String month   = value.substring(5,7);
-							String season = normMonthInSeason.get(month);
-							xValue = value.substring(0,4)+"-"+season;
-							break;
-						}
-						else if (value.matches("^[0-9][0-9][0-9][0-9]-(SP|SU|FA|WI).*")){
-							xValue = value.substring(0,7);
-							break;
-						}
-						else{
-							j--;
-						}
-					}
-				
-				}
-				else{
-					j--;
-				}
+	static {
+		xPatternMap.put("century", Pattern.compile("^(\\d{2})...*"));
+		xPatternMap.put("decade", Pattern.compile("^(\\d{3})..*"));
+		xPatternMap.put("year", Pattern.compile("^(\\d{4}).*"));
+		xPatternMap.put("dateYear", Pattern.compile("^(\\d{4}.*)"));
+		xPatternMap.put("month", Pattern.compile("^(\\d{4}-\\d{2}).*"));
+		xPatternMap.put("day", Pattern.compile("^(\\d{4}-\\d{2}-\\d{2}).*"));
+		xPatternMap.put("week", Pattern.compile("^(\\d{4}-(?:\\d{2}-\\d{2}|W\\d{2})).*"));
+		xPatternMap.put("quarter", Pattern.compile("^(\\d{4}-(?:\\d{2}|Q[1-4])).*"));
+		xPatternMap.put("dateQuarter", Pattern.compile("^(\\d{4}-Q[1-4]).*"));
+		xPatternMap.put("season", Pattern.compile("^(\\d{4}-(?:\\d{2}|SP|SU|FA|WI)).*"));
+	}
+
+	/**
+	 * The value of the x of the last mentioned Timex is calculated.
+	 * @param linearDates
+	 * @param i
+	 * @param x
+	 * @return
+	 */
+	public String getLastMentionedX(List<Timex3> linearDates, int i, String x){
+	
+		String xValue = getLastMentionedX(linearDates.get(i),
+				linearDates.listIterator(i), xPatternMap.get(x));
+		
+		// Change full date to W/Q/S representation
+		if ("week".equals(x) && !xValue.contains("W")) {
+			xValue = xValue.substring(0, 4) + "-W" + getWeekOfDate(xValue);
+		}
+		else if ("quarter".equals(x) && !xValue.contains("Q")) {
+			xValue = xValue.substring(0, 4) + "-Q" + normMonthInQuarter.get(xValue.substring(5, 7));
+		}
+		else if ("season".equals(x) && !xValue.contains("S")) {
+			xValue = xValue.substring(0, 4) + "-S" + normMonthInSeason.get(xValue.substring(5, 7));
 		}
 		return xValue;
 	}
 
+	private String getLastMentionedX(Timex3 t_i, ListIterator<Timex3> iter, Pattern xPattern) {
+		while (iter.hasPrevious()) {
+			Timex3 timex = iter.previous();
+			if (timex.getBegin() == t_i.getBegin()) {
+				continue;
+			}
+			Matcher m = xPattern.matcher(timex.getTimexValue());
+			if (m.find()) {
+				return m.group(1);
+			}
+		}
+		return "";
+	}
 
 	/**
 	 * get the x-next day of date.
