@@ -1767,6 +1767,20 @@ public class FullSpecifier {
 		}
 		return "";
 	}
+	
+	private String getXNext(String date, String fmt, int field, int offset) {
+		SimpleDateFormat formatter = new SimpleDateFormat(fmt);
+		Calendar c = Calendar.getInstance();
+		try {
+			c.setTime(formatter.parse(date));
+			c.add(field, offset);
+			c.getTime();
+			return formatter.format(c.getTime());
+		} catch (ParseException e) {
+			e.printStackTrace();
+			return "";
+		}
+	}
 
 	/**
 	 * get the x-next day of date.
@@ -1776,18 +1790,7 @@ public class FullSpecifier {
 	 * @return
 	 */
 	public String getXNextDay(String date, Integer x) {
-		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
-		String newDate = "";
-		Calendar c = Calendar.getInstance();
-		try {
-			c.setTime(formatter.parse(date));
-			c.add(Calendar.DAY_OF_MONTH, x);
-			c.getTime();
-			newDate = formatter.format(c.getTime());
-		} catch (ParseException e) {
-			e.printStackTrace();
-		}
-		return newDate;
+		return getXNext(date, "yyyy-MM-dd", Calendar.DAY_OF_MONTH, x);
 	}
 
 	/**
@@ -1798,35 +1801,11 @@ public class FullSpecifier {
 	 * @return
 	 */
 	public String getXNextMonth(String date, Integer x) {
-		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM");
-		String newDate = "";
-		Calendar c = Calendar.getInstance();
-		try {
-			c.setTime(formatter.parse(date));
-			c.add(Calendar.MONTH, x);
-			c.getTime();
-			newDate = formatter.format(c.getTime());
-		} catch (ParseException e) {
-			e.printStackTrace();
-		}
-		return newDate;
+		return getXNext(date, "yyyy-MM", Calendar.MONTH, x);
 	}
 
 	public String getXNextWeek(String date, Integer x){
-		String date_no_W = date.replace("W", "");
-		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-w");
-		String newDate = "";
-		Calendar c = Calendar.getInstance();
-		try {
-			c.setTime(formatter.parse(date_no_W));
-			c.add(Calendar.WEEK_OF_YEAR, x);
-			c.getTime();
-			newDate = formatter.format(c.getTime());
-			newDate = newDate.substring(0,4)+"-W"+normNumber.get(newDate.substring(5));
-		} catch (ParseException e){
-			e.printStackTrace();
-		}
-		return newDate;
+		return getXNext(date.replace("-W", "-"), "yyyy-w", Calendar.WEEK_OF_YEAR, x).replace("-", "-W");
 	}
 	
 	/**
