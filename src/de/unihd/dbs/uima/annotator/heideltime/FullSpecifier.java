@@ -26,34 +26,49 @@ import de.unihd.dbs.uima.types.heideltime.Timex3;
 
 public class FullSpecifier {
 	Map<String, String> hmAllRePattern;
-	Map<String, String> normDayInWeek;
-	Map<String, String> normNumber;
-	Map<String, String> normMonthName;
-	Map<String, String> normMonthInSeason;
-	Map<String, String> normMonthInQuarter;
+	static final Map<String, String> normDayInWeek = new HashMap<String, String>();
+	static final Map<String, String> normNumber = new HashMap<String, String>();
+	static final Map<String, String> normMonthName = new HashMap<String, String>();
+	static final Map<String, String> normMonthInSeason = new HashMap<String, String>();
+	static final Map<String, String> normMonthInQuarter = new HashMap<String, String>();
 	
 	Logger logger;
 	
-	public FullSpecifier(Map<String, String> hmAllRePattern,
-			Map<String, String> normDayInWeek, Map<String, String> normNumber,
-			Map<String, String> normMonthName,
-			Map<String, String> normMonthInSeason,
-			Map<String, String> normMonthInQuarter) {
+	public FullSpecifier(Map<String, String> hmAllRePattern) {
 		super();
 		this.hmAllRePattern = hmAllRePattern;
-		this.normDayInWeek = normDayInWeek;
-		this.normNumber = normNumber;
-		this.normMonthName = normMonthName;
-		this.normMonthInSeason = normMonthInSeason;
-		this.normMonthInQuarter = normMonthInQuarter;
 		logger = UIMAFramework.getLogger(FullSpecifier.class);
 	}
 	
-	public FullSpecifier(Map<String, String> hmAllRePattern) {
-		this(hmAllRePattern, new HashMap<String, String>(),
-				new HashMap<String, String>(), new HashMap<String, String>(),
-				new HashMap<String, String>(), new HashMap<String, String>());
-
+	static class Unit {
+		Pattern extractor;
+		
+		public Unit(String extractor) {
+			this.extractor = Pattern.compile(extractor);
+		}
+	}
+	
+	static final Map<String, Unit> UNITS = new HashMap<String, Unit>();
+	
+	static {
+		initNormalizations();
+		initUnits();
+	}
+	
+	private static void initUnits() {
+		UNITS.put("century", new Unit("^(\\d{2})...*"));
+		UNITS.put("decade", new Unit("^(\\d{3})..*"));
+		UNITS.put("year", new Unit("^(\\d{4}).*"));
+		UNITS.put("dateYear", new Unit("^(\\d{4}.*)"));
+		UNITS.put("month", new Unit("^(\\d{4}-\\d{2}).*"));
+		UNITS.put("day", new Unit("^(\\d{4}-\\d{2}-\\d{2}).*"));
+		UNITS.put("week", new Unit("^(\\d{4}-(?:\\d{2}-\\d{2}|W\\d{2})).*"));
+		UNITS.put("quarter", new Unit("^(\\d{4}-(?:\\d{2}|Q[1-4])).*"));
+		UNITS.put("dateQuarter", new Unit("^(\\d{4}-Q[1-4]).*"));
+		UNITS.put("season", new Unit("^(\\d{4}-(?:\\d{2}|SP|SU|FA|WI)).*"));
+	}
+	
+	private static void initNormalizations() {
 		// MONTH IN QUARTER
 		normMonthInQuarter.put("01","1");
 		normMonthInQuarter.put("02","1");
@@ -98,20 +113,20 @@ public class FullSpecifier {
 		normDayInWeek.put("Thursday","5");
 		normDayInWeek.put("Friday","6");
 		normDayInWeek.put("Saturday","7");
-//		normDayInWeek.put("sunday","7");
-//		normDayInWeek.put("monday","1");
-//		normDayInWeek.put("tuesday","2");
-//		normDayInWeek.put("wednesday","3");
-//		normDayInWeek.put("thursday","4");
-//		normDayInWeek.put("friday","5");
-//		normDayInWeek.put("saturday","6");
-//		normDayInWeek.put("Sunday","7");
-//		normDayInWeek.put("Monday","1");
-//		normDayInWeek.put("Tuesday","2");
-//		normDayInWeek.put("Wednesday","3");
-//		normDayInWeek.put("Thursday","4");
-//		normDayInWeek.put("Friday","5");
-//		normDayInWeek.put("Saturday","6");
+//				normDayInWeek.put("sunday","7");
+//				normDayInWeek.put("monday","1");
+//				normDayInWeek.put("tuesday","2");
+//				normDayInWeek.put("wednesday","3");
+//				normDayInWeek.put("thursday","4");
+//				normDayInWeek.put("friday","5");
+//				normDayInWeek.put("saturday","6");
+//				normDayInWeek.put("Sunday","7");
+//				normDayInWeek.put("Monday","1");
+//				normDayInWeek.put("Tuesday","2");
+//				normDayInWeek.put("Wednesday","3");
+//				normDayInWeek.put("Thursday","4");
+//				normDayInWeek.put("Friday","5");
+//				normDayInWeek.put("Saturday","6");
 	
 	
 		// NORM MINUTE
@@ -1587,21 +1602,6 @@ public class FullSpecifier {
 				"hmAllRePattern.containsKey(tensePos4Past):"+hmAllRePattern.get("tensePos4Past") + "\n" +
 				"CHECK TOKEN:"+token.getPos());
 	}
-	
-	static final Map<String, Pattern> xPatternMap = new HashMap<String, Pattern>();
-	
-	static {
-		xPatternMap.put("century", Pattern.compile("^(\\d{2})...*"));
-		xPatternMap.put("decade", Pattern.compile("^(\\d{3})..*"));
-		xPatternMap.put("year", Pattern.compile("^(\\d{4}).*"));
-		xPatternMap.put("dateYear", Pattern.compile("^(\\d{4}.*)"));
-		xPatternMap.put("month", Pattern.compile("^(\\d{4}-\\d{2}).*"));
-		xPatternMap.put("day", Pattern.compile("^(\\d{4}-\\d{2}-\\d{2}).*"));
-		xPatternMap.put("week", Pattern.compile("^(\\d{4}-(?:\\d{2}-\\d{2}|W\\d{2})).*"));
-		xPatternMap.put("quarter", Pattern.compile("^(\\d{4}-(?:\\d{2}|Q[1-4])).*"));
-		xPatternMap.put("dateQuarter", Pattern.compile("^(\\d{4}-Q[1-4]).*"));
-		xPatternMap.put("season", Pattern.compile("^(\\d{4}-(?:\\d{2}|SP|SU|FA|WI)).*"));
-	}
 
 	/**
 	 * The value of the x of the last mentioned Timex is calculated.
@@ -1613,7 +1613,7 @@ public class FullSpecifier {
 	public String getLastMentionedX(List<Timex3> linearDates, int i, String x){
 	
 		String xValue = getLastMentionedX(linearDates.get(i),
-				linearDates.listIterator(i), xPatternMap.get(x));
+				linearDates.listIterator(i), UNITS.get(x).extractor);
 		
 		// Change full date to W/Q/S representation
 		if ("week".equals(x) && !xValue.contains("W")) {
