@@ -369,13 +369,12 @@ public class FullSpecifier {
 			String valueNew = value_i;
 			if (value_i.startsWith("UNDEF-year")){
 				String newYearValue = dctYear+"";
-				// vi has month (ignore day)
-				if (viHasMonth == true && (viHasSeason == false)) {
-					// WITH DOCUMENT CREATION TIME
-					if ((documentTypeNews) && (dctAvailable)){
+				if (documentTypeNews && dctAvailable) {
+					// vi has month (ignore day)
+					if (viHasMonth == true && (viHasSeason == false)) {
 						//  Tense is FUTURE
 						if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
-							// if dct-month is larger than vi-month, than add 1 to dct-year
+							// if dct-month is larger than vi-month, then add 1 to dct-year
 							if (dctMonth > viThisMonth) {
 								int intNewYear = dctYear + 1;
 								newYearValue = intNewYear + "";
@@ -383,22 +382,15 @@ public class FullSpecifier {
 						}
 						// Tense is PAST
 						if ((last_used_tense.equals("PAST"))){
-							// if dct-month is smaller than vi month, than substrate 1 from dct-year					
+							// if dct-month is smaller than vi month, then substrate 1 from dct-year					
 							if (dctMonth < viThisMonth) {
 								int intNewYear = dctYear - 1;
 								newYearValue = intNewYear + "";
 							}
 						}
 					}
-					// WITHOUT DOCUMENT CREATION TIME
-					else {
-						newYearValue = getLastMentionedX(linearDates, i, "year");
-					}
-				}
-				// vi has quaurter
-				if (viHasQuarter == true){
-					// WITH DOCUMENT CREATION TIME
-					if ((documentTypeNews) && (dctAvailable)){
+					// vi has quarter
+					if (viHasQuarter == true){
 						//  Tense is FUTURE
 						if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
 							if (Integer.parseInt(dctQuarter.substring(1)) < Integer.parseInt(viThisQuarter.substring(1))){
@@ -414,15 +406,8 @@ public class FullSpecifier {
 							}
 						}
 					}
-					// WITHOUT DOCUMENT CREATION TIME
-					else{
-						newYearValue = getLastMentionedX(linearDates, i, "year");
-					}
-				}
-				// vi has half
-				if (viHasHalf == true){
-					// WITH DOCUMENT CREATION TIME
-					if ((documentTypeNews) && (dctAvailable)){
+					// vi has half
+					if (viHasHalf == true){
 						//  Tense is FUTURE
 						if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
 							if (Integer.parseInt(dctHalf.substring(1)) < Integer.parseInt(viThisHalf.substring(1))){
@@ -438,34 +423,19 @@ public class FullSpecifier {
 							}
 						}
 					}
-					// WITHOUT DOCUMENT CREATION TIME
-					else{
-						newYearValue = getLastMentionedX(linearDates, i, "year");
-					}
-				}
-			
-				// vi has season
-				if ((viHasMonth == false) && (viHasDay == false) && (viHasSeason == true)) {
-					// TODO check tenses?
-					// WITH DOCUMENT CREATION TIME
-					if ((documentTypeNews) && (dctAvailable)){
+				
+					// vi has season
+					if ((viHasMonth == false) && (viHasDay == false) && (viHasSeason == true)) {
+						// TODO check tenses?
 						newYearValue = dctYear+"";
 					}
-					// WITHOUT DOCUMENT CREATION TIME
-					else{
-						newYearValue = getLastMentionedX(linearDates, i, "year");
-					}
-				}
-				// vi has week
-				if (viHasWeek){
-					// WITH DOCUMENT CREATION TIME
-					if ((documentTypeNews) && (dctAvailable)){
+					// vi has week
+					if (viHasWeek){
 						newYearValue = dctYear+"";
 					}
-					// WITHOUT DOCUMENT CREATION TIME
-					else{
-						newYearValue = getLastMentionedX(linearDates, i, "year");
-					}
+				}
+				else {
+					newYearValue = getLastMentionedX(linearDates, i, "year");
 				}
 
 				// REPLACE THE UNDEF-YEAR WITH THE NEWLY CALCULATED YEAR AND ADD TIMEX TO INDEXES
