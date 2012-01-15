@@ -132,7 +132,7 @@ public class TimexRuleMatcher {
 	
 	private Pattern buildExtractionPattern(String rule_extraction, Map<String, String> hmAllRePattern) {
 		// Substitute %xxxx expressions
-		for (MatchResult mr : findMatches(paVariable, rule_extraction)){
+		for (MatchResult mr : HeidelTime.findMatches(paVariable, rule_extraction)){
 			logger.log(Level.FINE, "DEBUGGING: replacing patterns..."+ mr.group());
 			String repl = hmAllRePattern.get(mr.group(1));
 			if (repl == null) {
@@ -182,7 +182,7 @@ public class TimexRuleMatcher {
 			// CHECK FOR ADDITIONAL CONSTRAINS //
 			/////////////////////////////////////
 			if (!(r.group(4) == null)){
-				for (MatchResult ro : findMatches(paRuleFeature, r.group(4))){
+				for (MatchResult ro : HeidelTime.findMatches(paRuleFeature, r.group(4))){
 					String key = ro.group(1);
 					String value = ro.group(2);
 					if ("OFFSET".equals(key)) {
@@ -227,7 +227,7 @@ public class TimexRuleMatcher {
 		// decide which of two expressions shall be removed if both
 		// have the same offset
 		for (RulePattern rulePattern : patterns) {
-			for (MatchResult r : findMatches(rulePattern.pattern, s.getCoveredText())) {
+			for (MatchResult r : HeidelTime.findMatches(rulePattern.pattern, s.getCoveredText())) {
 				if (processRuleMatch(rulePattern.name, r, s, jcas, idGen)) {
 					nAdded++;
 				}
@@ -264,28 +264,10 @@ public class TimexRuleMatcher {
 				idGen.next(), ruleName, jcas);
 		return true;
 	}
-
-	/**
-	 * Find all the matches of a pattern in a charSequence and return the
-	 * results as list.
-	 *
-	 * @param pattern
-	 * @param s
-	 * @return
-	 */
-	public static Iterable<MatchResult> findMatches(Pattern pattern,
-			CharSequence s) {
-		List<MatchResult> results = new ArrayList<MatchResult>();
-
-		for (Matcher m = pattern.matcher(s); m.find();)
-			results.add(m.toMatchResult());
-
-		return results;
-	}
 	
 	public List<PosConstraint> parsePosConstraintList(String input) {
 		List<PosConstraint> res = new ArrayList<PosConstraint>();
-		for (MatchResult mr : findMatches(paPosConstraint, input)){
+		for (MatchResult mr : HeidelTime.findMatches(paPosConstraint, input)){
 			res.add(new PosConstraint(Integer.parseInt(mr.group(1)), mr.group(2)));
 		}
 		return res;
@@ -331,7 +313,7 @@ public class TimexRuleMatcher {
 	 */
 	public String correctDurationValue(String value) {
 		if (value.matches("PT[0-9]+H")){
-			for (MatchResult mr : findMatches(Pattern.compile("PT([0-9]+)H"), value)){
+			for (MatchResult mr : HeidelTime.findMatches(Pattern.compile("PT([0-9]+)H"), value)){
 				int hours = Integer.parseInt(mr.group(1));
 				if ((hours % 24) == 0){
 					int days = hours / 24;
@@ -340,7 +322,7 @@ public class TimexRuleMatcher {
 			}
 		}
 		else if (value.matches("PT[0-9]+M")){
-			for (MatchResult mr : findMatches(Pattern.compile("PT([0-9]+)M"), value)){
+			for (MatchResult mr : HeidelTime.findMatches(Pattern.compile("PT([0-9]+)M"), value)){
 				int minutes = Integer.parseInt(mr.group(1));
 				if ((minutes % 60) == 0){
 					int hours = minutes / 60;
@@ -349,7 +331,7 @@ public class TimexRuleMatcher {
 			}
 		}
 		else if (value.matches("P[0-9]+M")){
-			for (MatchResult mr : findMatches(Pattern.compile("P([0-9]+)M"), value)){
+			for (MatchResult mr : HeidelTime.findMatches(Pattern.compile("P([0-9]+)M"), value)){
 				int months = Integer.parseInt(mr.group(1));
 				if ((months % 12) == 0){
 					int years = months / 12;
