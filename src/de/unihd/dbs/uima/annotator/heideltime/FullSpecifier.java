@@ -201,6 +201,16 @@ public class FullSpecifier {
 		normMonthName.put("november","11");
 		normMonthName.put("december","12");
 	}
+	
+	private int getOffsetForTense(String tense, int referenceValue, int timeValue) {
+		if ("PAST".equals(tense) && referenceValue >= timeValue) {
+			return 1;
+		}
+		if (("FUTURE".equals(tense) || "PRESENTFUTURE".equals(tense)) && referenceValue <= timeValue) {
+			return -1;
+		}
+		return 0;
+	}
 
 	public void process(JCas jcas, String typeToProcess) {
 		
@@ -370,62 +380,20 @@ public class FullSpecifier {
 			if (value_i.startsWith("UNDEF-year")){
 				String newYearValue = dctYear+"";
 				if (documentTypeNews && dctAvailable) {
-					// vi has month (ignore day)
-					if (viHasMonth == true && (viHasSeason == false)) {
-						//  Tense is FUTURE
-						if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
-							// if dct-month is larger than vi-month, then add 1 to dct-year
-							if (dctMonth > viThisMonth) {
-								int intNewYear = dctYear + 1;
-								newYearValue = intNewYear + "";
-							}
-						}
-						// Tense is PAST
-						if ((last_used_tense.equals("PAST"))){
-							// if dct-month is smaller than vi month, then substrate 1 from dct-year					
-							if (dctMonth < viThisMonth) {
-								int intNewYear = dctYear - 1;
-								newYearValue = intNewYear + "";
-							}
-						}
+					if (viHasMonth && !viHasSeason) {
+						newYearValue = dctYear + getOffsetForTense(last_used_tense, dctMonth, viThisMonth) + "";
 					}
-					// vi has quarter
-					if (viHasQuarter == true){
-						//  Tense is FUTURE
-						if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
-							if (Integer.parseInt(dctQuarter.substring(1)) < Integer.parseInt(viThisQuarter.substring(1))){
-								int intNewYear = dctYear + 1;
-								newYearValue = intNewYear + "";
-							}
-						}
-						// Tense is PAST
-						if ((last_used_tense.equals("PAST"))){
-							if (Integer.parseInt(dctQuarter.substring(1)) < Integer.parseInt(viThisQuarter.substring(1))){
-								int intNewYear = dctYear - 1;
-								newYearValue = intNewYear + "";
-							}
-						}
+					if (viHasQuarter){
+						newYearValue = dctYear + getOffsetForTense(last_used_tense,
+								Integer.parseInt(dctQuarter.substring(1)),
+								Integer.parseInt(viThisQuarter.substring(1))) + "";
 					}
-					// vi has half
-					if (viHasHalf == true){
-						//  Tense is FUTURE
-						if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
-							if (Integer.parseInt(dctHalf.substring(1)) < Integer.parseInt(viThisHalf.substring(1))){
-								int intNewYear = dctYear + 1;
-								newYearValue = intNewYear + "";
-							}
-						}
-						// Tense is PAST
-						if ((last_used_tense.equals("PAST"))){
-							if (Integer.parseInt(dctHalf.substring(1)) < Integer.parseInt(viThisHalf.substring(1))){
-								int intNewYear = dctYear - 1;
-								newYearValue = intNewYear + "";
-							}
-						}
+					if (viHasHalf){
+						newYearValue = dctYear + getOffsetForTense(last_used_tense,
+								Integer.parseInt(dctHalf.substring(1)),
+								Integer.parseInt(viThisHalf.substring(1))) + "";
 					}
-				
-					// vi has season
-					if ((viHasMonth == false) && (viHasDay == false) && (viHasSeason == true)) {
+					if (!viHasMonth && !viHasDay && viHasSeason) {
 						// TODO check tenses?
 						newYearValue = dctYear+"";
 					}
