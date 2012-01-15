@@ -1743,7 +1743,8 @@ public class FullSpecifier {
 	}
 
 	public String getXNextWeek(String date, Integer x){
-		return getXNext(date.replace("-W", "-"), "yyyy-w", Calendar.WEEK_OF_YEAR, x).replace("-", "-W");
+		String res = getXNext(date.replace("-W", "-"), "yyyy-w", Calendar.WEEK_OF_YEAR, x);
+		return res.substring(0,4) + "-W" + normNumber.get(res.substring(5));
 	}
 	
 	/**
