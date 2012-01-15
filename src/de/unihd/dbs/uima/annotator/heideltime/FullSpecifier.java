@@ -203,10 +203,10 @@ public class FullSpecifier {
 	}
 	
 	private int getOffsetForTense(String tense, int referenceValue, int timeValue) {
-		if ("PAST".equals(tense) && referenceValue <= timeValue) {
+		if ("PAST".equals(tense) && referenceValue < timeValue) {
 			return -1;
 		}
-		if (("FUTURE".equals(tense) || "PRESENTFUTURE".equals(tense)) && referenceValue >= timeValue) {
+		if (("FUTURE".equals(tense) || "PRESENTFUTURE".equals(tense)) && referenceValue > timeValue) {
 			return +1;
 		}
 		return 0;
