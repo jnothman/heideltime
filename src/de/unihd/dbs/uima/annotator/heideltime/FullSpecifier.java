@@ -229,11 +229,7 @@ public class FullSpecifier {
 		////////////////////////////////////////
 		// IS THERE A DOCUMENT CREATION TIME? //
 		////////////////////////////////////////
-		boolean documentTypeNews = false;
 		boolean dctAvailable = false;
-		if (typeToProcess.equals("news")){
-			documentTypeNews = true;
-		}
 		// get the dct information
 		String dctValue   = "";
 		int dctCentury    = 0;
@@ -297,6 +293,7 @@ public class FullSpecifier {
 		else{
 			logger.log(Level.FINE, "No DCT available...");
 		}
+		boolean useDct = typeToProcess.equals("news") && dctAvailable;
 	
 		//////////////////////////////////////////////
 		// go through list of Date and Time timexes //
@@ -379,7 +376,7 @@ public class FullSpecifier {
 			String valueNew = value_i;
 			if (value_i.startsWith("UNDEF-year")){
 				String newYearValue = dctYear+"";
-				if (documentTypeNews && dctAvailable) {
+				if (useDct) {
 					if (viHasMonth && !viHasSeason) {
 						newYearValue = dctYear + getOffsetForTense(last_used_tense, dctMonth, viThisMonth) + "";
 					}
@@ -422,7 +419,7 @@ public class FullSpecifier {
 				String newCenturyValue = dctCentury+"";
 				int viThisDecade = Integer.parseInt(value_i.substring(13, 14));
 				// NEWS DOCUMENTS
-				if ((documentTypeNews) && (dctAvailable)){
+				if (useDct){
 					logger.log(Level.FINE, "dctCentury"+dctCentury);
 					newCenturyValue = dctCentury+"";
 					logger.log(Level.FINE, "dctCentury"+dctCentury);
@@ -474,150 +471,22 @@ public class FullSpecifier {
 				// year to calculate
 				if (value_i.matches("^UNDEF-(this|REFUNIT|REF)-(.*?)-(MINUS|PLUS)-([0-9]+).*")){
 					for (MatchResult mr : HeidelTime.findMatches(Pattern.compile("^(UNDEF-(this|REFUNIT|REF)-(.*?)-(MINUS|PLUS)-([0-9]+)).*"), value_i)){
-						String checkUndef = mr.group(1);
-						String ltn  = mr.group(2);
-						String unit = mr.group(3);
 						int diff    = Integer.parseInt(mr.group(5));
 						if ("MINUS".equals(mr.group(4))) {
 							diff = -diff;
 						}
-					
-						// check for REFUNIT (only allowed for "year")
-						if ((ltn.equals("REFUNIT")) && (unit.equals("year"))){
-							String dateWithYear = getLastMentionedX(linearDates, i, "dateYear");
-							if (dateWithYear.equals("")){
-								valueNew = valueNew.replace(checkUndef, "XXXX");
-							}
-							else{
-								int yearNew = Integer.parseInt(dateWithYear.substring(0,4)) + diff;
-								String rest = dateWithYear.substring(4);
-								valueNew = valueNew.replace(checkUndef, yearNew+rest);
-							}
-						}
-					
-					
-					
-						// REF and this are handled here
-						if (unit.equals("century")){
-							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								valueNew = valueNew.replace(checkUndef, dctCentury+diff+"XX");
-							}
-							else{
-								String lmCentury = getLastMentionedX(linearDates, i, "century");
-								if (lmCentury.equals("")){
-									valueNew = valueNew.replace(checkUndef, "XX");
-								}
-								else{
-									lmCentury = Integer.parseInt(lmCentury) + diff + "XX";
-									valueNew = valueNew.replace(checkUndef, lmCentury);
-								}
-							}
-						}
-						else if (unit.equals("decade")){
-							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								valueNew = valueNew.replace(checkUndef, dctDecade + diff +"X");
-							}
-							else{
-								String lmDecade = getLastMentionedX(linearDates, i, "decade");
-								if (lmDecade.equals("")){
-									valueNew = valueNew.replace(checkUndef, "XXX");
-								}
-								else{
-									lmDecade = Integer.parseInt(lmDecade) + diff + "X";
-									valueNew = valueNew.replace(checkUndef, lmDecade);
-								}
-							}
-						}
-						else if (unit.equals("year")){
-							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								valueNew = valueNew.replace(checkUndef, dctYear + diff + "");
-							}
-							else{
-								String lmYear = getLastMentionedX(linearDates, i, "year");
-								if (lmYear.equals("")){
-									valueNew = valueNew.replace(checkUndef, "XXXX");
-								}
-								else{
-									valueNew = valueNew.replace(checkUndef, Integer.parseInt(lmYear) + diff + "");
-								}
-							}
-						}
-						else if (unit.equals("quarter")){
-							int intYear = 0;
-							int intQuarter = 0;
-							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								intYear    = dctYear;
-								intQuarter = Integer.parseInt(dctQuarter.substring(1));
-							}
-							else{
-								String lmQuarter = getLastMentionedX(linearDates, i, "quarter");
-								if (lmQuarter.equals("")){
-									valueNew = valueNew.replace(checkUndef, "XXXX-XX");
-								}
-								else{
-									intYear    = Integer.parseInt(lmQuarter.substring(0, 4));
-									intQuarter = Integer.parseInt(lmQuarter.substring(6));
-								}
-							}
-							if (valueNew.matches(checkUndef)) {
-								// Not yet replaced
-								int diffQuarters = (Math.abs(diff) % 4) * (diff < 0 ? -1 : 1);
-								diff -= diffQuarters;
-								int diffYears    = diff / 4;
-								intYear    = intYear + diffYears;
-								intQuarter = intQuarter + diffQuarters;
-								valueNew = valueNew.replace(checkUndef, intYear+"-Q"+intQuarter);
-							}
-						}
-						else if (unit.equals("month")){
-							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								valueNew = valueNew.replace(checkUndef, getXNextMonth(dctYear + "-" + normNumber.get(dctMonth+""), diff));
-							}
-							else{
-								String lmMonth = getLastMentionedX(linearDates, i, "month");
-								if (lmMonth.equals("")){
-									valueNew = valueNew.replace(checkUndef, "XXXX-XX");
-								}
-								else{
-									valueNew = valueNew.replace(checkUndef, getXNextMonth(lmMonth, diff));
-								}
-							}
-						}
-						else if (unit.equals("week")){
-							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"	+ dctDay, diff * 7));
-							}
-							else{
-								String lmDay = getLastMentionedX(linearDates, i, "day");
-								if (lmDay.equals("")){
-									valueNew = valueNew.replace(checkUndef, "XXXX-XX-XX");
-								}
-								else{
-									valueNew = valueNew.replace(checkUndef, getXNextDay(lmDay, diff * 7));
-								}
-							}
-						}
-						else if (unit.equals("day")){
-							if ((documentTypeNews) && (dctAvailable) && (ltn.equals("this"))){
-								valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"	+ dctDay, diff));
-							}
-							else{
-								String lmDay = getLastMentionedX(linearDates, i, "day");
-								if (lmDay.equals("")){
-									valueNew = valueNew.replace(checkUndef, "XXXX-XX-XX");
-								}
-								else{
-									valueNew = valueNew.replace(checkUndef, getXNextDay(lmDay, diff));
-								}
-							}
-						}
+						
+						valueNew = valueNew.replace(mr.group(1), calculateOffsetDate(linearDates, i,
+								mr.group(2), mr.group(3), diff,
+								useDct, dctCentury, dctDecade, dctYear,
+								dctQuarter, dctMonth, dctDay));
 					}
 				}
 		
 				// century
 				else if (value_i.startsWith("UNDEF-last-century")){
 					String checkUndef = "UNDEF-last-century";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, normNumber.get(dctCentury - 1 +"") + "XX");
 					}
 					else{
@@ -632,7 +501,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-this-century")){
 					String checkUndef = "UNDEF-this-century";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, normNumber.get(dctCentury+"") + "XX");
 					}
 					else{
@@ -647,7 +516,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-next-century")){
 					String checkUndef = "UNDEF-next-century";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, normNumber.get(dctCentury + 1+"") + "XX");
 					}
 					else{
@@ -664,7 +533,7 @@ public class FullSpecifier {
 				// decade
 				else if (value_i.startsWith("UNDEF-last-decade")){
 					String checkUndef = "UNDEF-last-decade";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, (dctYear - 10+"").substring(0,3)+"X");
 					}
 					else{
@@ -679,7 +548,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-this-decade")){
 					String checkUndef = "UNDEF-this-decade";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, (dctYear+"").substring(0,3)+"X");
 					}
 					else{
@@ -694,7 +563,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-next-decade")) {
 					String checkUndef = "UNDEF-next-decade";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, (dctYear + 10+"").substring(0,3)+"X");
 					}
 					else{
@@ -711,7 +580,7 @@ public class FullSpecifier {
 				// year
 				else if (value_i.startsWith("UNDEF-last-year")) {
 					String checkUndef = "UNDEF-last-year";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, dctYear -1 +"");
 					}
 					else{
@@ -726,7 +595,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-this-year")){
 					String checkUndef = "UNDEF-this-year";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, dctYear +"");
 					}
 					else{
@@ -741,7 +610,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-next-year")) {
 					String checkUndef = "UNDEF-next-year";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, dctYear +1 +"");
 					}
 					else{
@@ -758,7 +627,7 @@ public class FullSpecifier {
 				// month
 				else if (value_i.startsWith("UNDEF-last-month")) {
 					String checkUndef = "UNDEF-last-month";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, getXNextMonth(dctYear + "-" + normNumber.get(dctMonth+""), -1));
 					}
 					else{
@@ -773,7 +642,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-this-month")){
 					String checkUndef = "UNDEF-this-month";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, dctYear + "-" + normNumber.get(dctMonth+""));
 					}
 					else{
@@ -788,7 +657,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-next-month")) {
 					String checkUndef = "UNDEF-next-month";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, getXNextMonth(dctYear + "-" + normNumber.get(dctMonth+""), 1));
 					}
 					else{
@@ -805,7 +674,7 @@ public class FullSpecifier {
 				// day
 				else if (value_i.startsWith("UNDEF-last-day")) {
 					String checkUndef = "UNDEF-last-day";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"+ dctDay, -1));
 					}
 					else{
@@ -820,7 +689,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-this-day")){
 					String checkUndef = "UNDEF-this-day";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, dctYear + "-" + normNumber.get(dctMonth+"") + "-"+ normNumber.get(dctDay+""));
 					}
 					else{
@@ -838,7 +707,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-next-day")) {
 					String checkUndef = "UNDEF-next-day";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"+ dctDay, 1));
 					}
 					else{
@@ -855,7 +724,7 @@ public class FullSpecifier {
 				// week
 				else if (value_i.startsWith("UNDEF-last-week")) {
 					String checkUndef = "UNDEF-last-week";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, getXNextWeek(dctYear+"-W"+normNumber.get(dctWeek+""),-1));
 					}
 					else{
@@ -870,7 +739,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-this-week")){
 					String checkUndef = "UNDEF-this-week";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef,dctYear+"-W"+normNumber.get(dctWeek+""));
 					}
 					else{
@@ -885,7 +754,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-next-week")) {
 					String checkUndef = "UNDEF-next-week";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, getXNextWeek(dctYear+"-W"+normNumber.get(dctWeek+""),1));
 					}
 					else{
@@ -902,7 +771,7 @@ public class FullSpecifier {
 				// quarter
 				else if (value_i.startsWith("UNDEF-last-quarter")) {
 					String checkUndef = "UNDEF-last-quarter";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						if (dctQuarter.equals("Q1")){
 							valueNew = valueNew.replace(checkUndef, dctYear-1+"-Q4");
 						}
@@ -931,7 +800,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-this-quarter")){
 					String checkUndef = "UNDEF-this-quarter";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						valueNew = valueNew.replace(checkUndef, dctYear+"-"+dctQuarter);
 					}
 					else{
@@ -946,7 +815,7 @@ public class FullSpecifier {
 				}
 				else if (value_i.startsWith("UNDEF-next-quarter")) {
 					String checkUndef = "UNDEF-next-quarter";
-					if ((documentTypeNews) && (dctAvailable)){
+					if (useDct){
 						if (dctQuarter.equals("Q4")){
 							valueNew = valueNew.replace(checkUndef, dctYear+1+"-Q1");
 						}
@@ -982,7 +851,7 @@ public class FullSpecifier {
 						String newMonth = normMonthName.get((mr.group(3)));
 						int newMonthInt = Integer.parseInt(newMonth);
 						if (ltn.equals("last")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								if (dctMonth <= newMonthInt){
 									valueNew = valueNew.replace(checkUndef, dctYear-1+"-"+newMonth);
 								}
@@ -1007,7 +876,7 @@ public class FullSpecifier {
 							}
 						}
 						else if (ltn.equals("this")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								valueNew = valueNew.replace(checkUndef, dctYear+"-"+newMonth);
 							}
 							else{
@@ -1021,7 +890,7 @@ public class FullSpecifier {
 							}
 						}
 						else if (ltn.equals("next")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								if (dctMonth >= newMonthInt){
 									valueNew = valueNew.replace(checkUndef, dctYear+1+"-"+newMonth);
 								}
@@ -1055,7 +924,7 @@ public class FullSpecifier {
 						String ltn       = mr.group(2);
 						String newSeason = mr.group(3);
 						if (ltn.equals("last")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								if (dctSeason.equals("SP")){
 									valueNew = valueNew.replace(checkUndef, dctYear-1+"-"+newSeason);
 								}
@@ -1121,7 +990,7 @@ public class FullSpecifier {
 							}
 						}
 						else if (ltn.equals("this")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								// TODO include tense of sentence?
 								valueNew = valueNew.replace(checkUndef, dctYear+"-"+newSeason);
 							}
@@ -1137,7 +1006,7 @@ public class FullSpecifier {
 							}						
 						}
 						else if (ltn.equals("next")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								if (dctSeason.equals("SP")){
 									if (newSeason.equals("SP")){
 										valueNew = valueNew.replace(checkUndef, dctYear+1+"-"+newSeason);
@@ -1215,7 +1084,7 @@ public class FullSpecifier {
 						String newWeekday = mr.group(3);
 						int newWeekdayInt = Integer.parseInt(normDayInWeek.get(newWeekday));
 						if (ltnd.equals("last")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								int diff = (-1) * (dctWeekday - newWeekdayInt);
 								if (diff >= 0) {
 									diff = diff - 7;
@@ -1238,7 +1107,7 @@ public class FullSpecifier {
 							}
 						}
 						else if (ltnd.equals("this")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								// TODO tense should be included?!	
 								int diff = (-1) * (dctWeekday - newWeekdayInt);
 								if (diff >= 0) {
@@ -1271,7 +1140,7 @@ public class FullSpecifier {
 							}						
 						}
 						else if (ltnd.equals("next")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								int diff = newWeekdayInt - dctWeekday;
 								if (diff <= 0) {
 									diff = diff + 7;
@@ -1294,7 +1163,7 @@ public class FullSpecifier {
 							}
 						}
 						else if (ltnd.equals("day")){
-							if ((documentTypeNews) && (dctAvailable)){
+							if (useDct){
 								// TODO tense should be included?!
 								int diff = (-1) * (dctWeekday - newWeekdayInt);
 								if (diff >= 0) {
@@ -1345,6 +1214,145 @@ public class FullSpecifier {
 			t_i.addToIndexes();
 			linearDates.set(i, t_i);
 		}
+	}
+	
+	private int relativeTermOffset(String val) {
+		if (val.equals("last")) {
+			return -1;
+		}
+		else if (val.equals("next")) {
+			return 1;
+		}
+		return 0;
+	}
+
+	private String calculateOffsetDate(List<Timex3> linearDates, int i, String ltn, String unit, int diff,
+			boolean useDct, int dctCentury, int dctDecade, int dctYear,
+			String dctQuarter, int dctMonth, int dctDay) {
+		// check for REFUNIT (only allowed for "year")
+		if ((ltn.equals("REFUNIT")) && (unit.equals("year"))){
+			String dateWithYear = getLastMentionedX(linearDates, i, "dateYear");
+			if (dateWithYear.equals("")){
+				return "XXXX";
+			}
+			else{
+				int yearNew = Integer.parseInt(dateWithYear.substring(0,4)) + diff;
+				return yearNew + dateWithYear.substring(4);
+			}
+		}
+	
+		// REF and this are handled here
+		if (unit.equals("century")){
+			if (useDct && (ltn.equals("this"))){
+				return dctCentury + diff + "XX";
+			}
+			else{
+				String lmCentury = getLastMentionedX(linearDates, i, "century");
+				if (lmCentury.equals("")){
+					return "XX";
+				}
+				else{
+					lmCentury = Integer.parseInt(lmCentury) + diff + "XX";
+					return lmCentury;
+				}
+			}
+		}
+		else if (unit.equals("decade")){
+			if (useDct && (ltn.equals("this"))){
+				return dctDecade + diff +"X";
+			}
+			else{
+				String lmDecade = getLastMentionedX(linearDates, i, "decade");
+				if (lmDecade.equals("")){
+					return "XXX";
+				}
+				else{
+					lmDecade = Integer.parseInt(lmDecade) + diff + "X";
+					return lmDecade;
+				}
+			}
+		}
+		else if (unit.equals("year")){
+			if (useDct && (ltn.equals("this"))){
+				return dctYear + diff + "";
+			}
+			else{
+				String lmYear = getLastMentionedX(linearDates, i, "year");
+				if (lmYear.equals("")){
+					return "XXXX";
+				}
+				else{
+					return Integer.parseInt(lmYear) + diff + "";
+				}
+			}
+		}
+		else if (unit.equals("quarter")){
+			int intYear = 0;
+			int intQuarter = 0;
+			if (useDct && (ltn.equals("this"))){
+				intYear    = dctYear;
+				intQuarter = Integer.parseInt(dctQuarter.substring(1));
+			}
+			else{
+				String lmQuarter = getLastMentionedX(linearDates, i, "quarter");
+				if (lmQuarter.equals("")){
+					return "XXXX-XX";
+				}
+				else{
+					intYear    = Integer.parseInt(lmQuarter.substring(0, 4));
+					intQuarter = Integer.parseInt(lmQuarter.substring(6));
+				}
+			}
+			int diffQuarters = (Math.abs(diff) % 4) * (diff < 0 ? -1 : 1);
+			diff -= diffQuarters;
+			int diffYears    = diff / 4;
+			intYear    = intYear + diffYears;
+			intQuarter = intQuarter + diffQuarters;
+			return intYear+"-Q"+intQuarter;
+		}
+		else if (unit.equals("month")){
+			if (useDct && (ltn.equals("this"))){
+				return getXNextMonth(dctYear + "-" + normNumber.get(dctMonth+""), diff);
+			}
+			else{
+				String lmMonth = getLastMentionedX(linearDates, i, "month");
+				if (lmMonth.equals("")){
+					return "XXXX-XX";
+				}
+				else{
+					return getXNextMonth(lmMonth, diff);
+				}
+			}
+		}
+		else if (unit.equals("week")){
+			if (useDct && (ltn.equals("this"))){
+				return getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"	+ dctDay, diff * 7);
+			}
+			else{
+				String lmDay = getLastMentionedX(linearDates, i, "day");
+				if (lmDay.equals("")){
+					return "XXXX-XX-XX";
+				}
+				else{
+					return getXNextDay(lmDay, diff * 7);
+				}
+			}
+		}
+		else if (unit.equals("day")){
+			if (useDct && (ltn.equals("this"))){
+				return getXNextDay(dctYear + "-" + normNumber.get(dctMonth+"") + "-"	+ dctDay, diff);
+			}
+			else{
+				String lmDay = getLastMentionedX(linearDates, i, "day");
+				if (lmDay.equals("")){
+					return "XXXX-XX-XX";
+				}
+				else{
+					return getXNextDay(lmDay, diff);
+				}
+			}
+		}
+		throw new IllegalArgumentException("Could not determine offset date for " + ltn + " of " + unit + "(useDct=" + useDct + ", diff="+diff+")");
 	}
 	
 	/**
