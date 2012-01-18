@@ -41,9 +41,13 @@ public class PartialCalendar extends Calendar {
 	}
 	
 	public PartialCalendar(Collection<Implicature> implicatures, Calendar wrapped) {
+		this(implicatures, wrapped, 0);
+	}
+	
+	protected PartialCalendar(Collection<Implicature> implicatures, Calendar wrapped, int fieldMask) {
 		this.implicatures = implicatures;
 		this.wrapped = wrapped;
-		fieldMask = 0;
+		this.fieldMask = fieldMask;
 	}
 	
 	public static int makeMask(int... fields) {
@@ -57,6 +61,22 @@ public class PartialCalendar extends Calendar {
 	public void set(int field, int value) {
 		wrapped.set(field, value);
 		markSet(field);
+	}
+	
+	public void update(PartialCalendar other) {
+		int otherFieldMask = other.fieldMask;
+		fieldMask |= otherFieldMask;
+		markImplicatures();
+		int curFieldMask = 1;
+		int curField = 0;
+		while (otherFieldMask != 0) {
+			if ((curFieldMask & otherFieldMask) != 0) {
+				wrapped.set(curField, other.get(curField));
+				otherFieldMask &= ~curFieldMask;
+			}
+			curField ++;
+			curFieldMask <<= 1;
+		}
 	}
 	
 	public void markSet(int field) {
@@ -83,19 +103,33 @@ public class PartialCalendar extends Calendar {
 		return (fieldMask & (1 << field)) != 0;
 	}
 	
-	public int compareFieldsTo(Calendar other, int... fields) {
+	public boolean hasAny(int... fields) {
+		return (fieldMask & makeMask(fields)) != 0;
+	}
+
+	public boolean hasAll(int... fields) {
+		int mask = makeMask(fields);
+		return (fieldMask & mask) == mask;
+	}
+	
+	public int compareFieldsTo(PartialCalendar other, int... fields) {
 		for (int field : fields) {
-			// TODO: check both have this field
-			int thisVal = get(field);
-			int otherVal = other.get(field);
-			if (thisVal > otherVal) {
-				return 1;
-			}
-			else if (otherVal > thisVal) { 
-				return -1;
+			if (has(field) && other.has(field)) {
+				int thisVal = get(field);
+				int otherVal = other.get(field);
+				if (thisVal > otherVal) {
+					return 1;
+				}
+				else if (otherVal > thisVal) { 
+					return -1;
+				}
 			}
 		}
 		return 0;
+	}
+	
+	public Object clone() {
+		return new PartialCalendar(implicatures, (Calendar) wrapped.clone(), fieldMask);
 	}
 
 	public String toString() {
@@ -123,10 +157,6 @@ public class PartialCalendar extends Calendar {
 
 	public boolean before(Object when) {
 		return wrapped.before(when);
-	}
-
-	public Object clone() {
-		return wrapped.clone();
 	}
 
 	/**
