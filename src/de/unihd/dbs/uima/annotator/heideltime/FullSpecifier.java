@@ -284,7 +284,6 @@ public class FullSpecifier {
 			Timex3 t_i = (Timex3) linearDates.get(i);
 			String value_i = t_i.getTimexValue();
 			// get the last tense (depending on the part of speech tags used in front or behind the expression)
-			String last_used_tense = getLastTense(t_i, jcas);
 
 			//////////////////////////
 			// DISAMBIGUATION PHASE //
@@ -292,8 +291,9 @@ public class FullSpecifier {
 			String valueNew = value_i;
 			try {
 				if (value_i.startsWith("UNDEF")) {
+					String tense = getLastTense(t_i, jcas);
 					logger.log(Level.FINE, "\"" + t_i.getCoveredText() + "\" - " + value_i);
-					TimexCalendar cal_i = processUndef(previousDates, dct, useDct, last_used_tense, value_i);
+					TimexCalendar cal_i = processUndef(previousDates, dct, useDct, tense, value_i);
 					previousDates.add(0, cal_i);
 					valueNew = cal_i.toString();
 				}
@@ -313,11 +313,11 @@ public class FullSpecifier {
 		}
 	}
 	
-	private TimexCalendar processUndef(Collection<TimexCalendar> previousDates, TimexCalendar dct, boolean useDct, String last_used_tense, String value_i) {
+	private TimexCalendar processUndef(Collection<TimexCalendar> previousDates, TimexCalendar dct, boolean useDct, String tense, String value_i) {
 		
 		// Parse the different forms of UNDEF strings
 		UndefValues undef = new UndefValues(value_i);
-		logger.log(Level.FINE, value_i + " " + undef + " tense=" + last_used_tense + " dct=" + dct);
+		logger.log(Level.FINE, value_i + " " + undef + " tense=" + tense + " dct=" + dct);
 
 		TimexCalendar thisDate = undef.calendar;
 		int field = undef.field;
@@ -337,11 +337,11 @@ public class FullSpecifier {
 			if (useDct) {
 				// Determine offset from tense
 				if (field == CENTURY) {
-					undef.diff = getOffsetForTense(last_used_tense,
+					undef.diff = getOffsetForTense(tense,
 							refDate.compareFieldsTo(thisDate, DECADE));
 				}
 				else {
-					undef.diff = getOffsetForTense(last_used_tense,
+					undef.diff = getOffsetForTense(tense,
 							refDate.compareFieldsTo(thisDate, MONTH, QUARTER_YEAR, HALF_YEAR, WEEK_OF_YEAR));
 				}
 			}
@@ -374,7 +374,7 @@ public class FullSpecifier {
 			else {
 				// "this", "next" or "last" unknown 
 				assert field == DAY_OF_WEEK;
-				updateFrom = calculateUngroundedDayByValue(refDate, last_used_tense, thisDate.get(field), useDct);
+				updateFrom = calculateUngroundedDayByValue(refDate, tense, thisDate.get(field), useDct);
 			}
 		}
 		else if (undef.withRespectTo == UndefValues.AUTHOR_TIME || undef.withRespectTo == UndefValues.MENTIONED_TIME) {
@@ -450,7 +450,7 @@ public class FullSpecifier {
 	}
 	
 	private TimexCalendar calculateUngroundedDayByValue(TimexCalendar ref,
-			String last_used_tense, int newValue, boolean useDct) {
+			String tense, int newValue, boolean useDct) {
 		
 		if (ref == null) {
 			return null;
@@ -469,7 +469,7 @@ public class FullSpecifier {
 		if (useDct){
 			// TODO tense should be included?!
 			//  Tense is FUTURE
-			if ((last_used_tense.equals("FUTURE")) || (last_used_tense.equals("PRESENTFUTURE"))) {
+			if ((tense.equals("FUTURE")) || (tense.equals("PRESENTFUTURE"))) {
 				diff = diff + 7;
 			}
 		}
