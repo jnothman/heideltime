@@ -105,11 +105,11 @@ public class TimexCalendar extends PartialCalendar {
 	
 	public TimexCalendar(String timexValue, boolean northernSeasons) {
 		super(TIMEX_IMPLICATURES, new ExtendedCalendar());
-		set(ERA, GregorianCalendar.AD);
-		lowestField = parseTimex(timexValue);
 		if (!northernSeasons) {
 			seasonOffset = 2;
 		}
+		set(ERA, GregorianCalendar.AD);
+		lowestField = parseTimex(timexValue);
 	}
 	
 	public Object clone() {

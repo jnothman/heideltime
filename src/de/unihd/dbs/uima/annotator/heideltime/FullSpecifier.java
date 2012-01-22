@@ -57,9 +57,9 @@ public class FullSpecifier {
 	}
 	
 	static final Map<String, Integer> FIELDS = new HashMap<String, Integer>();
-	static final Map<String, FieldValue> FIELD_VALUES = new HashMap<String, FieldValue>();
+	final Map<String, FieldValue> FIELD_VALUES = new HashMap<String, FieldValue>();
 	
-	static {
+	public void initValues() {
 		FIELDS.put("century", CENTURY);
 		FIELDS.put("decade", DECADE);
 		FIELDS.put("year", YEAR);
@@ -100,11 +100,18 @@ public class FullSpecifier {
 		FIELD_VALUES.put("november", new FieldValue(MONTH, Calendar.NOVEMBER));
 		FIELD_VALUES.put("december", new FieldValue(MONTH, Calendar.DECEMBER));
 		
-		// FIXME: Make this unstatic to handle southern seasons
-		FIELD_VALUES.put("SP", new FieldValue(SEASON, TimexCalendar.NORTHERN_SPRING));
-		FIELD_VALUES.put("SU", new FieldValue(SEASON, TimexCalendar.NORTHERN_SUMMER));
-		FIELD_VALUES.put("FA", new FieldValue(SEASON, TimexCalendar.NORTHERN_FALL));
-		FIELD_VALUES.put("WI", new FieldValue(SEASON, TimexCalendar.NORTHERN_WINTER));
+		if (northernSeasons) {
+			FIELD_VALUES.put("SP", new FieldValue(SEASON, TimexCalendar.NORTHERN_SPRING));
+			FIELD_VALUES.put("SU", new FieldValue(SEASON, TimexCalendar.NORTHERN_SUMMER));
+			FIELD_VALUES.put("FA", new FieldValue(SEASON, TimexCalendar.NORTHERN_FALL));
+			FIELD_VALUES.put("WI", new FieldValue(SEASON, TimexCalendar.NORTHERN_WINTER));
+		}
+		else {
+			FIELD_VALUES.put("SP", new FieldValue(SEASON, TimexCalendar.SOUTHERN_SPRING));
+			FIELD_VALUES.put("SU", new FieldValue(SEASON, TimexCalendar.SOUTHERN_SUMMER));
+			FIELD_VALUES.put("FA", new FieldValue(SEASON, TimexCalendar.SOUTHERN_FALL));
+			FIELD_VALUES.put("WI", new FieldValue(SEASON, TimexCalendar.SOUTHERN_WINTER));
+		}
 	}
 	
 	Logger logger;
@@ -119,15 +126,22 @@ public class FullSpecifier {
 	static final int FUTURE_TENSE = 3;
 	
 	TimexCalendar unsetTimex;
+	boolean northernSeasons;
 	
-	public FullSpecifier(Map<String, String> hmAllRePattern) {
+	public FullSpecifier(Map<String, String> hmAllRePattern, boolean northernSeasons) {
 		super();
 		this.tensePos4PresentFuture = initPattern(hmAllRePattern, "tensePos4PresentFuture");
 		this.tensePos4Past = initPattern(hmAllRePattern, "tensePos4Past");
 		this.tensePos4Future = initPattern(hmAllRePattern, "tensePos4Future");
 		this.tenseWord4Future = initPattern(hmAllRePattern,"tenseWord4Future");
-		this.unsetTimex = new TimexCalendar("");
+		this.northernSeasons = northernSeasons;
+		initValues();
+		this.unsetTimex = new TimexCalendar("", northernSeasons);
 		logger = UIMAFramework.getLogger(FullSpecifier.class);
+	}
+	
+	public FullSpecifier(Map<String, String> hmAllRePattern) {
+		this(hmAllRePattern, true);
 	}
 	
 	private Pattern initPattern(Map<String, String> hmAllRePattern, String key) {
@@ -254,7 +268,7 @@ public class FullSpecifier {
 				calendar.setLowestField(field);
 			}
 			else {
-				calendar = new TimexCalendar(unsetTimex.toString(field) + remaining);
+				calendar = new TimexCalendar(unsetTimex.toString(field) + remaining, northernSeasons);
 			}
 			if (byValue) {
 				calendar.set(field, value);
@@ -291,7 +305,7 @@ public class FullSpecifier {
 			if (dctValue.matches("\\d\\d\\d\\d\\d\\d\\d\\d")){
 				dctValue = dctValue.substring(0, 4) + '-' + dctValue.substring(4, 6) + '-' + dctValue.substring(6, 8);
 			}
-			dct = new TimexCalendar(dctValue);
+			dct = new TimexCalendar(dctValue, northernSeasons);
 		}
 		else{
 			logger.log(Level.FINE, "No DCT available...");
@@ -322,7 +336,7 @@ public class FullSpecifier {
 					valueNew = cal_i.toString();
 				}
 				else if (value_i.matches("^\\d\\d\\d\\d.*")) {
-					previousDates.add(0, new TimexCalendar(value_i));
+					previousDates.add(0, new TimexCalendar(value_i, northernSeasons));
 				}
 			} catch (RuntimeException e) {
 				logger.log(Level.WARNING, "Error while processing: " + value_i);
