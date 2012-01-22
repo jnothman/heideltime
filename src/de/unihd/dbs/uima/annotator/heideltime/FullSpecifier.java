@@ -6,10 +6,12 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.TreeMap;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
@@ -18,6 +20,7 @@ import java.util.regex.Pattern;
 import org.apache.uima.UIMAFramework;
 import org.apache.uima.cas.FSIterator;
 import org.apache.uima.jcas.JCas;
+import org.apache.uima.jcas.tcas.Annotation;
 import org.apache.uima.util.Level;
 import org.apache.uima.util.Logger;
 import org.cleartk.timeml.type.DocumentCreationTime;
@@ -105,25 +108,45 @@ public class FullSpecifier {
 	}
 	
 	Logger logger;
-	Map<String, String> hmAllRePattern;
+	
+	final Pattern tensePos4PresentFuture;
+	final Pattern tensePos4Past;
+	final Pattern tensePos4Future;
+	final Pattern tenseWord4Future;
+	static final int UNKNOWN_TENSE = 0;
+	static final int PAST_TENSE = 1;
+	static final int PRESENT_FUTURE_TENSE = 2;
+	static final int FUTURE_TENSE = 3;
+	
 	TimexCalendar unsetTimex;
 	
 	public FullSpecifier(Map<String, String> hmAllRePattern) {
 		super();
-		this.hmAllRePattern = hmAllRePattern;
+		this.tensePos4PresentFuture = initPattern(hmAllRePattern, "tensePos4PresentFuture");
+		this.tensePos4Past = initPattern(hmAllRePattern, "tensePos4Past");
+		this.tensePos4Future = initPattern(hmAllRePattern, "tensePos4Future");
+		this.tenseWord4Future = initPattern(hmAllRePattern,"tenseWord4Future");
 		this.unsetTimex = new TimexCalendar("");
 		logger = UIMAFramework.getLogger(FullSpecifier.class);
 	}
 	
-	private int getOffsetForTense(String tense, int refValue, int timeValue) {
+	private Pattern initPattern(Map<String, String> hmAllRePattern, String key) {
+		if (!hmAllRePattern.containsKey(key)) {
+			logger.log(Level.WARNING, "Could not get pattern for " + key);
+			return null;
+		}
+		return Pattern.compile(hmAllRePattern.get(key));
+	}
+	
+	private int getOffsetForTense(int tense, int refValue, int timeValue) {
 		return getOffsetForTense(tense, new Integer(refValue).compareTo(timeValue));
 	}
 	
-	private int getOffsetForTense(String tense, int refCmp) {
-		if ("PAST".equals(tense) && refCmp < 0) {
+	private int getOffsetForTense(int tense, int refCmp) {
+		if (tense == PAST_TENSE && refCmp < 0) {
 			return -1;
 		}
-		if (("FUTURE".equals(tense) || "PRESENTFUTURE".equals(tense)) && refCmp > 0) {
+		if ((tense == FUTURE_TENSE || tense == PRESENT_FUTURE_TENSE) && refCmp > 0) {
 			return +1;
 		}
 		return 0;
@@ -276,6 +299,7 @@ public class FullSpecifier {
 		boolean useDct = typeToProcess.equals("news") && (dct != null);
 	
 		List<TimexCalendar> previousDates = new LinkedList<TimexCalendar>();
+		FSIterator sentenceIter = jcas.getAnnotationIndex(Sentence.type).iterator();
 		
 		//////////////////////////////////////////////
 		// go through list of Date and Time timexes //
@@ -283,15 +307,15 @@ public class FullSpecifier {
 		for (int i = 0; i < linearDates.size(); i++) {
 			Timex3 t_i = (Timex3) linearDates.get(i);
 			String value_i = t_i.getTimexValue();
-			// get the last tense (depending on the part of speech tags used in front or behind the expression)
 
 			//////////////////////////
 			// DISAMBIGUATION PHASE //
 			//////////////////////////
+
 			String valueNew = value_i;
 			try {
 				if (value_i.startsWith("UNDEF")) {
-					String tense = getLastTense(t_i, jcas);
+					int tense = getLastTense(t_i, getCurrentSentence(sentenceIter, t_i), jcas);
 					logger.log(Level.FINE, "\"" + t_i.getCoveredText() + "\" - " + value_i);
 					TimexCalendar cal_i = processUndef(previousDates, dct, useDct, tense, value_i);
 					previousDates.add(0, cal_i);
@@ -313,7 +337,26 @@ public class FullSpecifier {
 		}
 	}
 	
-	private TimexCalendar processUndef(Collection<TimexCalendar> previousDates, TimexCalendar dct, boolean useDct, String tense, String value_i) {
+	/**
+	 * Returns the sentence of the given annotation, advancing the iterator if necessary.
+	 * @param sentenceIter
+	 * @param annot
+	 * @return the sentence containing annot, if it is at a current or subsequent iterator position, or null
+	 */
+	private Sentence getCurrentSentence(FSIterator sentenceIter, Annotation annot) {
+		int begin = annot.getBegin();
+		Sentence cur;
+		while (sentenceIter.isValid()) {
+			cur = (Sentence) sentenceIter.get();
+			if (cur.getBegin() <= begin && begin < cur.getEnd()) {
+				return cur;
+			}
+			sentenceIter.moveToNext();
+		}
+		return null;
+	}
+
+	private TimexCalendar processUndef(Collection<TimexCalendar> previousDates, TimexCalendar dct, boolean useDct, int tense, String value_i) {
 		
 		// Parse the different forms of UNDEF strings
 		UndefValues undef = new UndefValues(value_i);
@@ -450,7 +493,7 @@ public class FullSpecifier {
 	}
 	
 	private TimexCalendar calculateUngroundedDayByValue(TimexCalendar ref,
-			String tense, int newValue, boolean useDct) {
+			int tense, int newValue, boolean useDct) {
 		
 		if (ref == null) {
 			return null;
@@ -469,7 +512,7 @@ public class FullSpecifier {
 		if (useDct){
 			// TODO tense should be included?!
 			//  Tense is FUTURE
-			if ((tense.equals("FUTURE")) || (tense.equals("PRESENTFUTURE"))) {
+			if (tense == FUTURE_TENSE || tense == PRESENT_FUTURE_TENSE) {
 				diff = diff + 7;
 			}
 		}
@@ -493,114 +536,111 @@ public class FullSpecifier {
 	}
 	
 	/**
-	 * Get the last tense used in the sentence
-	 *
-	 * @param timex
-	 * @return
+	 * Iterates through tokens, beginning with that immediately preceding timex to the beginning
+	 * of the sentence, then continues forward from immediately after timex to the end of the
+	 * sentence.
 	 */
-	public String getLastTense(Timex3 timex, JCas jcas) {
+	private class TenseTokenIterator implements Iterator<Token> {
+		boolean backwards = true;
+		FSIterator backwardIter;
+		FSIterator forwardIter;
+		
+		public TenseTokenIterator(Timex3 timex, Sentence sent, JCas jcas) {
+			backwardIter = jcas.getAnnotationIndex(Token.type).subiterator(sent);
+			while (backwardIter.isValid() && ((Token) backwardIter.get()).getBegin() < timex.getBegin()) {
+				backwardIter.moveToNext();
+			}
+			if (backwardIter.isValid()) {
+				backwardIter.moveToPrevious();
+			}
+			else {
+				backwardIter.moveToLast();
+			}
+			forwardIter = backwardIter.copy();
+			while (forwardIter.isValid() && ((Token) forwardIter.get()).getEnd() < timex.getEnd()) {
+				forwardIter.moveToNext();
+			}
+		}
+		
+		public boolean hasNext() {
+			return backwardIter.isValid() || forwardIter.isValid();
+		}
+		
+		public Token next() {
+			Token res;
+			if (backwards) {
+				res = (Token) backwardIter.get();
+				backwardIter.moveToPrevious();
+				if (!backwardIter.isValid()) {
+					// Past first sentence token; proceed to scan from after timex
+					backwards = false;
+				}
+			} else {
+				res = (Token) forwardIter.get();
+				forwardIter.moveToNext();
+			}
+			return res;
+		}
+		
+		public void remove() {
+			throw new UnsupportedOperationException();
+		}
+	}
 	
-		String lastTense = "";
-
-		// Get the sentence
-		FSIterator iterSentence = jcas.getAnnotationIndex(Sentence.type).iterator();
-		Sentence s = new Sentence(jcas);
-		while (iterSentence.hasNext()) {
-			s = (Sentence) iterSentence.next();
-			if ((s.getBegin() < timex.getBegin())
-					&& (s.getEnd() > timex.getEnd())) {
-				break;
-			}
+	/**
+	 * Iterates through tokens, alternately those preceding and following timex, at an increasing
+	 * distance, until the ends of the sentence.
+	 */
+	private class ClosestTokenIterator extends TenseTokenIterator {
+		
+		public ClosestTokenIterator(Timex3 timex, Sentence sent, JCas jcas) {
+			super(timex, sent, jcas);
 		}
-
-		// Get the tokens
-		TreeMap<Integer, Token> tmToken = new TreeMap<Integer, Token>();
-		FSIterator iterToken = jcas.getAnnotationIndex(Token.type).subiterator(s);
-		while (iterToken.hasNext()) {
-			Token token = (Token) iterToken.next();
-			tmToken.put(token.getEnd(), token);
-		}
-
-		// Get the last VERB token
-		for (Integer tokEnd : tmToken.keySet()) {
-			if (tokEnd < timex.getBegin()) {
-				Token token = tmToken.get(tokEnd);
-				logNearTense("GET LAST TENSE", token);
-				if (token.getPos() == null){
-				
-				}
-				else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
-					lastTense = "PRESENTFUTURE";
-				}
-				else if ((hmAllRePattern.containsKey("tensePos4Past")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Past")))){
-					lastTense = "PAST";
-				}
-				else if ((hmAllRePattern.containsKey("tensePos4Future")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Future")))){
-					if (token.getCoveredText().matches(hmAllRePattern.get("tenseWord4Future"))){
-						lastTense = "FUTURE";
-					}
-				}
-				if (token.getCoveredText().equals("since")){
-					lastTense = "PAST";
+		
+		public Token next() {
+			Token res;
+			if (backwards) {
+				res = (Token) backwardIter.get();
+				backwardIter.moveToPrevious();
+				if (forwardIter.isValid()) {
+					backwards = false;
 				}
 			}
-			if (lastTense.equals("")) {
-				if (tokEnd > timex.getEnd()) {
-					Token token = tmToken.get(tokEnd);
-					logNearTense("GET NEXT TENSE", token);
-					if (token.getPos() == null){
-					
-					}
-					else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
-						lastTense = "PRESENTFUTURE";
-					}
-					else if ((hmAllRePattern.containsKey("tensePos4Past")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Past")))){
-						lastTense = "PAST";
-					}
-					else if ((hmAllRePattern.containsKey("tensePos4Future")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Future")))){
-						if (token.getCoveredText().matches(hmAllRePattern.get("tenseWord4Future"))){
-							lastTense = "FUTURE";
-						}
-					}
+			else {
+				res = (Token) forwardIter.get();
+				forwardIter.moveToNext();
+				if (backwardIter.isValid()) {
+					backwards = true;
 				}
 			}
+			return res;
 		}
-		// check for double POS Constraints (not included in the rule language, yet) TODO
-		// VHZ VNN and VHZ VNN and VHP VNN and VBP VVN
-		String prevPos = "";
-		String longTense = "";
-		if (lastTense.equals("PRESENTFUTURE")){
-			for (Integer tokEnd : tmToken.keySet()) {
-				if (tokEnd < timex.getBegin()) {
-					Token token = tmToken.get(tokEnd);
-					if ((prevPos.equals("VHZ")) || (prevPos.equals("VBZ")) || (prevPos.equals("VHP")) || (prevPos.equals("VBP"))){
-						if (token.getPos().equals("VVN")){
-							if ((!(token.getCoveredText().equals("expected"))) && (!(token.getCoveredText().equals("scheduled")))){
-								lastTense = "PAST";
-								longTense = "PAST";
-							}
-						}
-					}
-					prevPos = token.getPos();
-				}
-				if (longTense.equals("")) {
-					if (tokEnd > timex.getEnd()) {
-						Token token = tmToken.get(tokEnd);
-						if ((prevPos.equals("VHZ")) || (prevPos.equals("VBZ")) || (prevPos.equals("VHP")) || (prevPos.equals("VBP"))){
-							if (token.getPos().equals("VVN")){
-								if ((!(token.getCoveredText().equals("expected"))) && (!(token.getCoveredText().equals("scheduled")))){
-									lastTense = "PAST";
-									longTense = "PAST";
-								}
-							}
-						}
-						prevPos = token.getPos();
-					}
+	}
+	
+	public int getTense(Iterator<Token> tokenIter) {
+		while (tokenIter.hasNext()) {
+			Token token = tokenIter.next();
+			String pos = token.getPos();
+			logNearTense("GET TENSE", token);
+			if (pos == null){
+			
+			}
+			else if (tensePos4PresentFuture != null && tensePos4PresentFuture.matcher(pos).matches()){
+				return PRESENT_FUTURE_TENSE;
+			}
+			else if (tensePos4Past != null && tensePos4Past.matcher(pos).matches()){
+				return PAST_TENSE;
+			}
+			else if (tensePos4Future != null && tensePos4Future.matcher(pos).matches()){
+				if (tenseWord4Future.matcher(token.getCoveredText()).matches()) {
+					return FUTURE_TENSE;
 				}
 			}
+			if (token.getCoveredText().equals("since")){
+				return PAST_TENSE;
+			}
 		}
-		logger.log(Level.FINE, "TENSE: "+lastTense);
-		return lastTense;
+		return UNKNOWN_TENSE;
 	}
 
 	/**
@@ -609,119 +649,38 @@ public class FullSpecifier {
 	 * @param timex
 	 * @return
 	 */
-	public String getClosestTense(Timex3 timex, JCas jcas) {
-	
-		String lastTense = "";
-		String nextTense = "";
-	
-		int tokenCounter = 0;
-		int lastid = 0;
-		int nextid = 0;
-		int tid    = 0;
-
-		// Get the sentence
-		FSIterator iterSentence = jcas.getAnnotationIndex(Sentence.type).iterator();
-		Sentence s = new Sentence(jcas);
-		while (iterSentence.hasNext()) {
-			s = (Sentence) iterSentence.next();
-			if ((s.getBegin() < timex.getBegin())
-					&& (s.getEnd() > timex.getEnd())) {
-				break;
-			}
-		}
-
-		// Get the tokens
-		TreeMap<Integer, Token> tmToken = new TreeMap<Integer, Token>();
-		FSIterator iterToken = jcas.getAnnotationIndex(Token.type).subiterator(s);
-		while (iterToken.hasNext()) {
-			Token token = (Token) iterToken.next();
-			tmToken.put(token.getEnd(), token);
-		}
-	
-		// Get the last VERB token
-		for (Integer tokEnd : tmToken.keySet()) {
-			tokenCounter++;
-			if (tokEnd < timex.getBegin()) {
-				Token token = tmToken.get(tokEnd);
-				logNearTense("GET LAST TENSE", token);
-				if (token.getPos() == null){
-				
-				}
-				else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
-					lastTense = "PRESENTFUTURE";
-					lastid = tokenCounter;
-				}
-				else if ((hmAllRePattern.containsKey("tensePos4Past")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Past")))){
-					lastTense = "PAST";
-					lastid = tokenCounter;
-				}
-				else if ((hmAllRePattern.containsKey("tensePos4Future")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Future")))){
-					if (token.getCoveredText().matches(hmAllRePattern.get("tenseWord4Future"))){
-						lastTense = "FUTURE";
-						lastid = tokenCounter;
-					}
-				}
-			}
-			else{
-				if (tid == 0){
-					tid = tokenCounter;
-				}
-			}
-		}
-		tokenCounter = 0;
-		for (Integer tokEnd : tmToken.keySet()) {
-			tokenCounter++;
-			if (nextTense.equals("")) {
-				if (tokEnd > timex.getEnd()) {
-					Token token = tmToken.get(tokEnd);
-					logNearTense("GET NEXT TENSE", token);
-					if (token.getPos() == null){
-					
-					}
-					else if ((hmAllRePattern.containsKey("tensePos4PresentFuture")) && (token.getPos().matches(hmAllRePattern.get("tensePos4PresentFuture")))){
-						nextTense = "PRESENTFUTURE";
-						nextid = tokenCounter;
-					}
-					else if ((hmAllRePattern.containsKey("tensePos4Past")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Past")))){
-						nextTense = "PAST";
-						nextid = tokenCounter;
-					}
-					else if ((hmAllRePattern.containsKey("tensePos4Future")) && (token.getPos().matches(hmAllRePattern.get("tensePos4Future")))){
-						if (token.getCoveredText().matches(hmAllRePattern.get("tenseWord4Future"))){
-							nextTense = "FUTURE";
-							nextid = tokenCounter;
+	public int getLastTense(Timex3 timex, Sentence sent, JCas jcas) {
+		
+		int lastTense = getTense(new TenseTokenIterator(timex, sent, jcas));
+		
+		// check for double POS Constraints (not included in the rule language, yet) TODO
+		// VHZ VNN and VHZ VNN and VHP VNN and VBP VVN
+		String prevPos = "";
+		int longTense = UNKNOWN_TENSE;
+		if (lastTense == PRESENT_FUTURE_TENSE){
+			Iterator<Token> tokenIter = new TenseTokenIterator(timex, sent, jcas);
+			while (tokenIter.hasNext()) {
+				Token token = tokenIter.next();
+				if ((prevPos.equals("VHZ")) || (prevPos.equals("VBZ")) || (prevPos.equals("VHP")) || (prevPos.equals("VBP"))){
+					if (token.getPos().equals("VVN")){
+						if ((!(token.getCoveredText().equals("expected"))) && (!(token.getCoveredText().equals("scheduled")))){
+							lastTense = PAST_TENSE;
+							longTense = PAST_TENSE;
 						}
 					}
 				}
+				prevPos = token.getPos();
 			}
 		}
-		if (lastTense.equals("")){
-			logger.log(Level.FINE, "TENSE: "+nextTense);
-			return nextTense;
-		}
-		else if (nextTense.equals("")){
-			logger.log(Level.FINE, "TENSE: "+lastTense);
-			return lastTense;
-		}
-		else{
-			// If there is tense before and after the timex token,
-			// return the closer one:
-			if ((tid - lastid) > (nextid - tid)){
-				logger.log(Level.FINE, "TENSE: "+nextTense);
-				return nextTense;
-			}
-			else{
-				logger.log(Level.FINE, "TENSE: "+lastTense);
-				return lastTense;
-			}
-		}
+		logger.log(Level.FINE, "TENSE: "+lastTense);
+		return lastTense;
 	}
 
 	private void logNearTense(String title, Token token) {
 		logger.log(Level.FINE, title + ": string:"+token.getCoveredText()+" pos:"+token.getPos() + "\n" +
-				"hmAllRePattern.containsKey(tensePos4PresentFuture):"+hmAllRePattern.get("tensePos4PresentFuture") + "\n" +
-				"hmAllRePattern.containsKey(tensePos4Future):"+hmAllRePattern.get("tensePos4Future") + "\n" +
-				"hmAllRePattern.containsKey(tensePos4Past):"+hmAllRePattern.get("tensePos4Past") + "\n" +
+				"tensePos4PresentFuture:"+ tensePos4PresentFuture + "\n" +
+				"tensePos4Future:"+ tensePos4Future + "\n" +
+				"tensePos4Past:"+tensePos4Past + "\n" +
 				"CHECK TOKEN:"+token.getPos());
 	}
 }

@@ -146,9 +146,6 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 //		find_times     = (Boolean) aContext.getConfigParameterValue(PARAM_TIME);
 //		find_durations = (Boolean) aContext.getConfigParameterValue(PARAM_DURATION);
 //		find_sets      = (Boolean) aContext.getConfigParameterValue(PARAM_SET);
-
-		// GLOBAL NORMALIZATION INFORMATION
-		fullSpecifier = new FullSpecifier(hmAllRePattern);
 	
 		////////////////////////////////////////////////////////////
 		// READ NORMALIZATION RESOURCES FROM FILES AND STORE THEM //
@@ -173,6 +170,8 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 		///////////////////////////////////////////////////
 		HashMap<String, String> hmResourcesRules = readResourcesFromDirectory("rules");
 		readRules(hmResourcesRules);
+		
+		fullSpecifier = new FullSpecifier(hmAllRePattern);
 	
 		/////////////////////////////
 		// PRINT WHAT WILL BE DONE //
