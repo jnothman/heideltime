@@ -510,6 +510,9 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 
 		@Override
 		public void handle(Annotation a1, Annotation a2) {
+			if (toRemove.contains(a1) || toRemove.contains(a2)) {
+				return;
+			}
 			Timex3 res = selectForRemoval((Timex3) a1, (Timex3) a2);
 			toRemove.add(res);
 		}
