@@ -19,9 +19,11 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
@@ -31,7 +33,9 @@ import org.apache.uima.UimaContext;
 import org.apache.uima.analysis_component.JCasAnnotator_ImplBase;
 import org.apache.uima.analysis_engine.AnalysisEngineDescription;
 import org.apache.uima.cas.FSIterator;
+import org.apache.uima.cas.text.AnnotationIndex;
 import org.apache.uima.jcas.JCas;
+import org.apache.uima.jcas.tcas.Annotation;
 import org.apache.uima.resource.ResourceInitializationException;
 import org.apache.uima.util.Level;
 import org.apache.uima.util.Logger;
@@ -446,70 +450,123 @@ public class HeidelTime extends JCasAnnotator_ImplBase {
 			}
 		}
 
-		// remove invalids, finally
-		for (Timex3 timex3 : hsTimexToRemove) {
+		removeTimexes(hsTimexToRemove, "REMOVING PHASE");
+	}
+	
+	private void removeTimexes(Collection<Timex3> toRemove, String logMessage) {
+		for (Timex3 timex3 : toRemove) {
 			timex3.removeFromIndexes();
 			timex_counter--;
-			logger.log(Level.FINE, timex3.getTimexId()+"REMOVING PHASE: "+"found by:"+timex3.getFoundByRule()+" text:"+timex3.getCoveredText()+" value:"+timex3.getTimexValue());
+			logger.log(Level.FINE, timex3.getTimexId()+" " + logMessage + ": "+"found by:"+timex3.getFoundByRule()+" text:"+timex3.getCoveredText()+" value:"+timex3.getTimexValue());
 		}
 	}
+	
+	abstract class OverlappedAnnotationFinder {
+		AnnotationIndex index;
+		
+		public OverlappedAnnotationFinder(AnnotationIndex index) {
+			this.index = index;
+		}
+		
+		protected void process() {
+			FSIterator iter1 = index.iterator();
+			while (iter1.hasNext()) {
+				Annotation a1 = (Annotation) iter1.next();
+				int a1End = a1.getEnd();
+				
+				FSIterator iter2 = index.iterator(a1);
+
+				while (iter2.isValid() && a1End > ((Annotation) iter2.get()).getBegin()) {
+					Annotation a2 = (Annotation) iter2.get();
+					if (!a1.equals(a2)) {
+						handle(a1, a2);
+					}
+					iter2.moveToNext();
+				}
+			}
+		}
+		
+		/**
+		 * Handle an overlapping pair, where a1.getBegin() <= a2.getBegin(), and where equal, a1.getEnd() >= a2.getEnd(). 
+		 * @param a1
+		 * @param a2
+		 */
+		public abstract void handle(Annotation a1, Annotation a2);
+	}
+	
+	class OverlappedAnnotationDeduplicator extends OverlappedAnnotationFinder {
+		Set<Timex3> toRemove;
+		
+		public OverlappedAnnotationDeduplicator(JCas jcas) {
+			super(jcas.getAnnotationIndex(Timex3.type));
+		}
+		
+		public Set<Timex3> findToRemove() {
+			toRemove = new HashSet<Timex3>();
+			process();
+			toRemove.remove(null);
+			return toRemove;
+		}
+
+		@Override
+		public void handle(Annotation a1, Annotation a2) {
+			Timex3 res = selectForRemoval((Timex3) a1, (Timex3) a2);
+			toRemove.add(res);
+		}
+
+		private Timex3 selectForRemoval(Timex3 t1, Timex3 t2) {
+			if (t1.getEnd() > t2.getEnd() || (t1.getEnd() == t2.getEnd() && t1.getBegin() < t2.getBegin())) {
+				// t2 covered by t1
+				return t2;
+			}
+			else if (t1.getEnd() != t2.getEnd()) {
+				logger.log(Level.WARNING, "Overlap not handled between " + t1 + " and " + t2);
+				return null;
+				
+			}
+
+			// Handle identical spans
+			assert t1.getBegin() == t2.getBegin();
+			if (t1.getTimexType().equals("SET") || t2.getTimexType().equals("SET")) {
+				return selectLowestId(t1, t2);
+			}
+			
+			boolean t1Undef = t1.getTimexValue().startsWith("UNDEF");
+			boolean t2Undef = t2.getTimexValue().startsWith("UNDEF");
+			if (t1Undef && !t2Undef) {
+				return t1;
+			}
+			else if (t2Undef && !t1Undef) {
+				return t2;
+			}
+			
+			boolean t1Explicit = t1.getFoundByRule().endsWith("explicit");
+			boolean t2Explicit = t2.getFoundByRule().endsWith("explicit");
+			if (t1Explicit && !t2Explicit) {
+				return t2;
+			}
+			else if (t2Explicit && !t1Explicit) {
+				return t1;
+			}
+			
+			return selectLowestId(t1, t2);
+		}
+		
+		private Timex3 selectLowestId(Timex3 t1, Timex3 t2) {
+			if (Integer.parseInt(t1.getTimexId().substring(1)) < Integer.parseInt(t2.getTimexId().substring(1))) {
+				return t1;
+			}
+			return t2;
+		}
+	}
+	
+	
 
 	/**
 	 * @param jcas
 	 */
 	public void deleteOverlappedTimexes(JCas jcas) {
-		FSIterator timexIter1 = jcas.getAnnotationIndex(Timex3.type).iterator();
-		HashSet<Timex3> hsTimexesToRemove = new HashSet<Timex3>();
-
-		while (timexIter1.hasNext()) {
-			Timex3 t1 = (Timex3) timexIter1.next();
-			FSIterator timexIter2 = jcas.getAnnotationIndex(Timex3.type)
-					.iterator();
-
-			while (timexIter2.hasNext()) {
-				Timex3 t2 = (Timex3) timexIter2.next();
-				if (((t1.getBegin() >= t2.getBegin()) && (t1.getEnd() < t2.getEnd())) ||     // t1 starts inside or with t2 and ends before t2 -> remove t1
-						((t1.getBegin() > t2.getBegin()) && (t1.getEnd() <= t2.getEnd()))) { // t1 starts inside t2 and ends with or before t2 -> remove t1
-					hsTimexesToRemove.add(t1);
-				}
-				else if (((t2.getBegin() >= t1.getBegin()) && (t2.getEnd() < t1.getEnd())) || // t2 starts inside or with t1 and ends before t1 -> remove t2
-						((t2.getBegin() > t1.getBegin()) && (t2.getEnd() <= t1.getEnd()))) {    // t2 starts inside t1 and ends with or before t1 -> remove t2
-					hsTimexesToRemove.add(t2);
-				}
-				// identical length
-				if ((t1.getBegin() == t2.getBegin()) && (t1.getEnd() == t2.getEnd())) {
-					if ((t1.getTimexType().equals("SET")) || (t2.getTimexType().equals("SET"))) {
-						// REMOVE REAL DUPLICATES (the one with the lower timexID)
-						if ((Integer.parseInt(t1.getTimexId().substring(1)) < Integer.parseInt(t2.getTimexId().substring(1)))) {
-							hsTimexesToRemove.add(t1);
-						}
-					} else {
-						if (!(t1.equals(t2))){
-							if ((t1.getTimexValue().startsWith("UNDEF")) && (!(t2.getTimexValue().startsWith("UNDEF")))) {
-								hsTimexesToRemove.add(t1);
-							}
-							else if ((!(t1.getTimexValue().startsWith("UNDEF"))) && (t2.getTimexValue().startsWith("UNDEF"))) {
-								hsTimexesToRemove.add(t2);
-							}
-							// t1 is explicit, but t2 is not
-							else if ((t1.getFoundByRule().endsWith("explicit")) && (!(t2.getFoundByRule().endsWith("explicit")))){
-								hsTimexesToRemove.add(t2);
-							}
-							// REMOVE REAL DUPLICATES (the one with the lower timexID)
-							else if ((Integer.parseInt(t1.getTimexId().substring(1)) < Integer.parseInt(t2.getTimexId().substring(1)))) {
-								hsTimexesToRemove.add(t1);
-							}
-						}
-					}
-				}
-			}
-		}
-		// remove, finally
-		for (Timex3 t : hsTimexesToRemove) {
-			logger.log(Level.FINE, t.getTimexId()+"REMOVE DUPLICATE: " + t.getCoveredText()+"(id:"+t.getTimexId()+" value:"+t.getTimexValue()+" found by:"+t.getFoundByRule()+")");
-			t.removeFromIndexes();
-			timex_counter--;
-		}
+		removeTimexes(new OverlappedAnnotationDeduplicator(jcas).findToRemove(), "REMOVE DUPLICATE");
 	}
 
 
