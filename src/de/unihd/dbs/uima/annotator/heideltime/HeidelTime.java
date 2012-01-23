@@ -18,8 +18,6 @@ import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,8 +26,6 @@ import java.util.TreeMap;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Calendar;
-
 import org.apache.uima.UIMAFramework;
 import org.apache.uima.UimaContext;
 import org.apache.uima.analysis_component.JCasAnnotator_ImplBase;
@@ -40,10 +36,7 @@ import org.apache.uima.resource.ResourceInitializationException;
 import org.apache.uima.util.Level;
 import org.apache.uima.util.Logger;
 
-import org.cleartk.timeml.type.DocumentCreationTime;
-import org.cleartk.timeml.type.Event;
 import org.cleartk.timeml.type.Time;
-import org.cleartk.token.type.Token;
 import org.cleartk.token.type.Sentence;
 import org.uimafit.factory.AnalysisEngineFactory;
 import org.uimafit.factory.TypeSystemDescriptionFactory;
@@ -61,9 +54,6 @@ import de.unihd.dbs.uima.types.heideltime.Timex3;
  *
  */
 public class HeidelTime extends JCasAnnotator_ImplBase {
-
-	// TOOL NAME (may be used as componentId)
-	private String toolname = "de.unihd.dbs.uima.annoator.heideltime";
 
 	// COUNTER (how many timexes added to CAS? (finally)
 	int timex_counter        = 0;

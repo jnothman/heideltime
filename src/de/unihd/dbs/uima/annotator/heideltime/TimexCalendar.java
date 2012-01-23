@@ -357,6 +357,8 @@ public class TimexCalendar extends PartialCalendar {
 	}
 	
 	private static class ExtendedCalendar extends GregorianCalendar {
+		private static final long serialVersionUID = -1135117740051760325L;
+
 		@Override
 		public void add(int field, int value) {
 			if (value == 0) {
