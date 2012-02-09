@@ -40,8 +40,13 @@ public class PartialCalendar extends Calendar {
 		DEFAULT_IMPLICATURES.add(new Implicature(makeMask(HOUR_OF_DAY), makeMask(AM_PM, HOUR)));
 	}
 	
-	public PartialCalendar(Collection<Implicature> implicatures, Calendar wrapped) {
+	public PartialCalendar(Calendar wrapped, int... fields) {
+		this(DEFAULT_IMPLICATURES, wrapped, fields);
+	}
+	
+	public PartialCalendar(Collection<Implicature> implicatures, Calendar wrapped, int... fields) {
 		this(implicatures, wrapped, 0);
+		markSet(fields);
 	}
 	
 	protected PartialCalendar(Collection<Implicature> implicatures, Calendar wrapped, int fieldMask) {
@@ -79,9 +84,9 @@ public class PartialCalendar extends Calendar {
 		}
 	}
 	
-	public void markSet(int field) {
+	public void markSet(int... fields) {
 		int oldMask = fieldMask;
-		fieldMask |= (1 << field);
+		fieldMask |= makeMask(fields);
 		if (oldMask != fieldMask) {
 			markImplicatures();
 		}
